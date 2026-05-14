@@ -2,6 +2,7 @@
 .gradle/
 build/
 out/
+bin/
 
 # Java artifacts
 *.class
