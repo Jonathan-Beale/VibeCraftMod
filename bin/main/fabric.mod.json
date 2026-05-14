@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "vibecraftmod",
+  "version": "1.0.0",
+  "name": "VibeCraft Mod",
+  "description": "Client-side HUD overlay and input for VibeCraft AI assistant",
+  "authors": [],
+  "contact": {},
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.example.vibecraftmod.VibeCraftMod"
+    ]
+  },
+  "mixins": [],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "fabric-api": "*",
+    "minecraft": "~1.21.4"
+  }
+}
