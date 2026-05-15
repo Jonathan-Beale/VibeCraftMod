@@ -7,7 +7,14 @@ public record ColorScheme(int user, int claude, int tool, int output, int system
 
     public static ColorScheme get() {
         String active = ScreenManager.getActivePlugin();
-        return get((active == null || active.isBlank()) ? "vibecraft" : active);
+        if (active == null || active.isBlank()) {
+            // Use schema-defined default plugin instead of hardcoded "vibecraft"
+            active = SchemaConfig.getDefaultPlugin();
+        }
+        if (active == null || active.isBlank()) {
+            active = "vibecraft"; // Final fallback only
+        }
+        return get(active);
     }
 
     public static ColorScheme get(String plugin) {

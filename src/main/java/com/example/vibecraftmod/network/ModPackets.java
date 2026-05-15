@@ -342,7 +342,12 @@ public class ModPackets {
     private static String resolveDefaultPlugin() {
         String active = ScreenManager.getActivePlugin();
         if (active != null && !active.isBlank()) return active;
-        // Keep a stable fallback for startup/reconnect before schema screen context exists.
+        
+        // Use schema-defined default plugin instead of hardcoded "vibecraft"
+        String schemaDefault = com.example.vibecraftmod.ui.SchemaConfig.getDefaultPlugin();
+        if (schemaDefault != null && !schemaDefault.isBlank()) return schemaDefault;
+        
+        // Final fallback only if schema not available
         return "vibecraft";
     }
 

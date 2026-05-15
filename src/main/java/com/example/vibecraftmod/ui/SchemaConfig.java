@@ -89,6 +89,12 @@ public final class SchemaConfig {
         if (schema == null) {
             return new SchemaConfig(new JsonObject());
         }
+        
+        // Load default plugin from schema root
+        if (schema.has("defaultPlugin") && schema.get("defaultPlugin").isJsonPrimitive()) {
+            defaultPlugin = schema.get("defaultPlugin").getAsString();
+        }
+        
         if (schema.has("config") && schema.get("config").isJsonObject()) {
             return new SchemaConfig(schema.getAsJsonObject("config"));
         }

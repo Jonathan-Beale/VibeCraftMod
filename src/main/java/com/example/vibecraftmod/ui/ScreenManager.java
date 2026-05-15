@@ -59,9 +59,13 @@ public final class ScreenManager {
         return false;
     }
 
-    /** Switch to the highest-priority screen owned by a plugin. */
+    /** Switch to the highest-priority screen owned by a plugin.
+     * Screens are pre-sorted by SchemaConfig.getScreens() in descending priority order.
+     * This returns the first (highest-priority) screen for the plugin.
+     */
     public static synchronized boolean setActiveScreenForPlugin(String pluginId) {
         if (pluginId == null || pluginId.isBlank()) return false;
+        // SchemaConfig.getScreens() already sorted by priority (highest first)
         for (ScreenDef screen : SchemaConfig.getScreens()) {
             if (pluginId.equalsIgnoreCase(screen.plugin)) {
                 activeScreenId = screen.id;

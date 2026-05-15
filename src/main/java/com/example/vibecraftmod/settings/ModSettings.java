@@ -41,15 +41,20 @@ public final class ModSettings {
 
     public static final Map<String, String> DEFAULTS = new LinkedHashMap<>();
     static {
-        // These will be overridden by schema if present
+        // Chat display toggles
         DEFAULTS.put("chat.user_messages",  "true");
         DEFAULTS.put("chat.claude_text",    "true");
         DEFAULTS.put("chat.tools",          "false");
         DEFAULTS.put("chat.bash",           "false");
         DEFAULTS.put("chat.thinking",       "false");
+        
+        // HUD display settings
         DEFAULTS.put("hud.lines",           "1");
         DEFAULTS.put("ui.thoughts_visible", "true");
         DEFAULTS.put("ui.color_scheme",     "terminal");
+        
+        // Color role defaults (actual role definitions come from server schema)
+        // The server provides color role definitions in the schema; these are fallback defaults only
         DEFAULTS.put("color.user",     "55FF55");
         DEFAULTS.put("color.claude",   "55FFFF");
         DEFAULTS.put("color.tool",     "FFAA00");
@@ -167,6 +172,15 @@ public final class ModSettings {
 
     public static int hudLines() {
         return Math.max(0, Math.min(10, getInt("hud.lines")));
+    }
+
+    /**
+     * Get color role definitions from server schema.
+     * Returns an array of [key, label] pairs for all defined color roles.
+     * Example: [["color.user", "User Text"], ["color.claude", "Claude Text"], ...]
+     */
+    public static String[][] getColorRoles() {
+        return com.example.vibecraftmod.settings.ColorScheme.getRoles();
     }
 
     private static String scopedKey(String plugin, String key) {

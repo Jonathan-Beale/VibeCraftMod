@@ -49,6 +49,7 @@ public class SchemaScreen extends Screen {
     private static final Map<String, InternalAction> INTERNAL_ACTIONS = new HashMap<>();
 
     static {
+        // Standard UI control actions (plugin-agnostic)
         INTERNAL_ACTIONS.put("close_screen", (screen, action, optionValue, targetPlugin) -> screen.close());
         INTERNAL_ACTIONS.put("open_options", (screen, action, optionValue, targetPlugin) -> {
             if (screen.client != null) screen.client.setScreen(new SchemaSettingsScreen(screen));
@@ -65,8 +66,13 @@ public class SchemaScreen extends Screen {
                 screen.activeDropdownId = id.equals(screen.activeDropdownId) ? null : id;
             }
         });
+        
+        // Server communication actions
         INTERNAL_ACTIONS.put("request_history", (screen, action, optionValue, targetPlugin) -> ModPackets.requestHistory(targetPlugin));
         INTERNAL_ACTIONS.put("refresh_schema", (screen, action, optionValue, targetPlugin) -> ModPackets.requestHistory(targetPlugin));
+        
+        // Rendering/display actions (plugin-specific: targets HudState and ColorScheme)
+        // These assume a HUD rendering layer is present; other plugins may define alternatives
         INTERNAL_ACTIONS.put("clear_history", (screen, action, optionValue, targetPlugin) -> screen.clearHistoryViewAndServer(targetPlugin));
         INTERNAL_ACTIONS.put("clear_input", (screen, action, optionValue, targetPlugin) -> {
             screen.inputText = "";

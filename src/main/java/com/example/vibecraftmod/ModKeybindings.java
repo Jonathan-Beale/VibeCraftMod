@@ -3,6 +3,7 @@ package com.example.vibecraftmod;
 import com.example.vibecraftmod.config.PluginConfig;
 import com.example.vibecraftmod.hud.HudState;
 import com.example.vibecraftmod.screen.SchemaScreen;
+import com.example.vibecraftmod.ui.SchemaConfig;
 import com.example.vibecraftmod.ui.ScreenManager;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.util.InputUtil;
@@ -16,15 +17,23 @@ public class ModKeybindings {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (client.currentScreen == null) {
                 long handle = client.getWindow().getHandle();
-                int keyCode = PluginConfig.getKey("vibecraft", "open_menu");
-                int requiredMods = PluginConfig.getMods("vibecraft", "open_menu");
+                
+                // Get the default plugin from schema (plugin-agnostic)
+                String defaultPlugin = SchemaConfig.getDefaultPlugin();
+                if (defaultPlugin == null || defaultPlugin.isBlank()) {
+                    defaultPlugin = "vibecraft"; // Final fallback
+                }
+                
+                int keyCode = PluginConfig.getKey(defaultPlugin, "open_menu");
+                int requiredMods = PluginConfig.getMods(defaultPlugin, "open_menu");
                 int activeMods = currentMods(handle);
                 boolean isDown = keyCode > 0
                         && InputUtil.isKeyPressed(handle, keyCode)
                         && activeMods == requiredMods;
                 if (isDown && !wasDown) {
-                    // Backtick is VibeCraft terminal hotkey; key combo comes from server-provided schema keybind defaults.
-                    if (!ScreenManager.setActiveScreenForPlugin("vibecraft")) {
+                    // Key combo comes from server-provided schema keybind defaults.
+                    // The plugin is now dynamic, not hardcoded.
+                    if (!ScreenManager.setActiveScreenForPlugin(defaultPlugin)) {
                         ScreenManager.init();
                     }
                     HudState.clearQuestion();
