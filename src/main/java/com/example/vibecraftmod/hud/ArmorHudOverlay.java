@@ -3,24 +3,32 @@ package com.example.vibecraftmod.hud;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.Identifier;
 
 public class ArmorHudOverlay {
 
-    // Match vanilla hotbar: 20px outer slot, 16px item inset by 2px each side
+    // The vanilla hotbar sprite is 182×22 px: 1px border top/bottom/left, then
+    // 9 adjacent slots each 20px wide, then 1px right border.
+    // Drawing it at (slotX - 1, slotY - 1) and scissor-clipping to 20×20 reveals
+    // exactly one slot's interior — giving the same appearance as a hotbar slot.
+    private static final Identifier HOTBAR_TEXTURE = Identifier.ofVanilla("hud/hotbar");
+    private static final int HOTBAR_W = 182;
+    private static final int HOTBAR_H = 22;
+
+    // Vanilla hotbar: 20×20 slot, item drawn at +3 px from top-left
     private static final int SLOT_SIZE  = 20;
-    private static final int ITEM_INSET = 2;
+    private static final int ITEM_INSET = 3;
     private static final int MARGIN     = 5;
+
+    private static final int COLOR_COOLDOWN = 0xA0333333;
 
     private static final EquipmentSlot[] SLOTS = {
         EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET
     };
-
-    private static final int COLOR_BORDER   = 0xFF373737;
-    private static final int COLOR_BG       = 0xB0141414;
-    private static final int COLOR_COOLDOWN = 0xA0333333;
 
     public static void register() {
         HudRenderCallback.EVENT.register(ArmorHudOverlay::render);
@@ -45,30 +53,24 @@ public class ArmorHudOverlay {
     }
 
     private static void drawSlot(DrawContext context, int x, int y,
-                                 ItemStack stack, MinecraftClient client, float tickDelta) {
-        int x2 = x + SLOT_SIZE;
-        int y2 = y + SLOT_SIZE;
-
-        // 1px border
-        context.fill(x,      y,      x2,     y + 1,   COLOR_BORDER);
-        context.fill(x,      y2 - 1, x2,     y2,      COLOR_BORDER);
-        context.fill(x,      y + 1,  x + 1,  y2 - 1,  COLOR_BORDER);
-        context.fill(x2 - 1, y + 1,  x2,     y2 - 1,  COLOR_BORDER);
-
-        // Background
-        context.fill(x + 1, y + 1, x2 - 1, y2 - 1, COLOR_BG);
+                                  ItemStack stack, MinecraftClient client, float tickDelta) {
+        // Clip to this slot's area, then draw the hotbar sprite anchored so that
+        // its slot-0 interior (past the 1px top/left border) falls exactly at (x, y).
+        context.enableScissor(x, y, x + SLOT_SIZE, y + SLOT_SIZE);
+        context.drawGuiTexture(RenderLayer::getGuiTextured,
+            HOTBAR_TEXTURE, x - 1, y - 1, HOTBAR_W, HOTBAR_H);
+        context.disableScissor();
 
         if (!stack.isEmpty()) {
-            // Item render (16x16 centered in the slot)
             context.drawItem(stack, x + ITEM_INSET, y + ITEM_INSET);
             context.drawStackOverlay(client.textRenderer, stack, x + ITEM_INSET, y + ITEM_INSET);
 
-            // Cooldown sweep: dark overlay from top that shrinks as cooldown expires
+            // Cooldown sweep from top (same as vanilla hotbar cooldown display)
             float progress = client.player.getItemCooldownManager().getCooldownProgress(stack, tickDelta);
             if (progress < 1.0f) {
-                int sweepHeight = Math.round((1.0f - progress) * (SLOT_SIZE - 2));
+                int sweepHeight = Math.round((1.0f - progress) * SLOT_SIZE);
                 if (sweepHeight > 0) {
-                    context.fill(x + 1, y + 1, x2 - 1, y + 1 + sweepHeight, COLOR_COOLDOWN);
+                    context.fill(x, y, x + SLOT_SIZE, y + sweepHeight, COLOR_COOLDOWN);
                 }
             }
         }

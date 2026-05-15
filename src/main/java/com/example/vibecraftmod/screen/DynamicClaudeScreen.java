@@ -37,6 +37,9 @@ public class DynamicClaudeScreen extends Screen {
     private int scrollOffset = 0;
     private int historyTop = 0;
     private int historyBottom = 0;
+    private int inputTop = 0;
+    private int inputBottom = 0;
+    private int inputScrollOffset = 0;
     private int historyLineHeight = 11;
     private final List<ClickTarget> clickTargets = new ArrayList<>();
     private final Map<String, Integer> selectedTabByContainer = new HashMap<>();
@@ -570,18 +573,24 @@ public class DynamicClaudeScreen extends Screen {
         int promptW = textRenderer.getWidth(prompt + " ");
         int inputX = panelX + panelPadding + promptW;
         int maxW = panelW - panelPadding * 2 - promptW;
+        int visibleRows = Math.max(1, (h - 10) / historyLineHeight);
         int userColor = ColorScheme.get().user() | 0xFF000000;
 
         ctx.drawText(textRenderer, Text.literal(prompt).formatted(Formatting.AQUA), panelX + panelPadding, inputY,
                 colLabel, false);
 
         List<OrderedText> wrapped = textRenderer.wrapLines(parseLegacy(inputText.isEmpty() ? " " : inputText), maxW);
+        int maxInputScroll = Math.max(0, wrapped.size() - visibleRows);
+        inputScrollOffset = Math.max(0, Math.min(maxInputScroll, inputScrollOffset));
         if (inputText.isEmpty()) {
             ctx.drawText(textRenderer, Text.literal(placeholder).formatted(Formatting.DARK_GRAY), inputX, inputY,
                     0xFF555555, false);
         } else {
+            int startRow = Math.min(inputScrollOffset, Math.max(0, wrapped.size() - 1));
+            int endRow = Math.min(wrapped.size(), startRow + visibleRows);
             int ty = inputY;
-            for (OrderedText ot : wrapped) {
+            for (int i = startRow; i < endRow; i++) {
+                OrderedText ot = wrapped.get(i);
                 ctx.drawText(textRenderer, ot, inputX, ty, userColor, false);
                 ty += historyLineHeight;
             }
@@ -593,13 +602,28 @@ public class DynamicClaudeScreen extends Screen {
             int col = 0;
             if (!inputText.isEmpty()) {
                 String before = inputText.substring(0, Math.min(cursor, inputText.length()));
-                List<String> rows = wrapTextRows(before, maxW);
-                line = Math.max(0, rows.size() - 1);
-                col = textRenderer.getWidth(rows.get(rows.size() - 1));
+                List<OrderedText> caretRows = textRenderer.wrapLines(parseLegacy(before.isEmpty() ? " " : before), maxW);
+                line = Math.max(0, caretRows.size() - 1);
+                col = textRenderer.getWidth(caretRows.get(line));
+                if (before.endsWith("\n")) {
+                    line++;
+                    col = 0;
+                }
+                if (line < inputScrollOffset) {
+                    inputScrollOffset = line;
+                } else if (line >= inputScrollOffset + visibleRows) {
+                    inputScrollOffset = line - visibleRows + 1;
+                }
             }
-            int cy = inputY + line * historyLineHeight;
-            ctx.fill(inputX + col, cy, inputX + col + 1, cy + textRenderer.fontHeight, userColor);
+            int caretY = line - inputScrollOffset;
+            if (caretY >= 0 && caretY < visibleRows) {
+                int cy = inputY + caretY * historyLineHeight;
+                ctx.fill(inputX + col, cy, inputX + col + 1, cy + textRenderer.fontHeight, userColor);
+            }
         }
+
+        inputTop = y + 1;
+        inputBottom = y + h;
     }
 
     private void renderHint(DrawContext ctx, JsonObject widget, int panelX, int panelPadding, int y) {
@@ -654,6 +678,10 @@ public class DynamicClaudeScreen extends Screen {
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         if (mouseY >= historyTop && mouseY <= historyBottom) {
             scrollOffset = Math.max(0, (int) (scrollOffset + verticalAmount * 3));
+            return true;
+        }
+        if (mouseY >= inputTop && mouseY <= inputBottom) {
+            inputScrollOffset = Math.max(0, (int) (inputScrollOffset + verticalAmount * 3));
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
@@ -726,6 +754,7 @@ public class DynamicClaudeScreen extends Screen {
                 inputText = "";
                 cursor = 0;
                 scrollOffset = 0;
+                inputScrollOffset = 0;
             }
             return true;
         }
@@ -900,6 +929,7 @@ public class DynamicClaudeScreen extends Screen {
             case "clear_input" -> {
                 inputText = "";
                 cursor = 0;
+                inputScrollOffset = 0;
             }
             case "clear_history" -> {
                 clearHistoryViewAndServer(targetPlugin);
@@ -911,6 +941,7 @@ public class DynamicClaudeScreen extends Screen {
                     ModPackets.sendInput(text, targetPlugin);
                     inputText = "";
                     cursor = 0;
+                    inputScrollOffset = 0;
                 }
             }
             case "set_setting" -> {
