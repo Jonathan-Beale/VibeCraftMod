@@ -224,6 +224,8 @@ public class DynamicClaudeScreen extends Screen {
         int lineHeight = intVal(widget, "lineHeight", 11);
         historyLineHeight = lineHeight;
         boolean showThoughts = boolVal(widget, "showThoughts", ClaudeSettings.getBool("ui.thoughts_visible"));
+        boolean truncateCollapsed = boolVal(widget, "truncateCollapsed", false);
+        boolean truncateIndicator = boolVal(widget, "truncateIndicator", false);
         int scrollbarW = intVal(widget, "scrollbarWidth", 3);
         int textW = panelW - panelPadding * 2 - scrollbarW;
 
@@ -233,7 +235,7 @@ public class DynamicClaudeScreen extends Screen {
         for (ClaudeHudState.HudLine line : lines) {
             if (line.thought() && !showThoughts && !ClaudeHudState.isStreaming()) continue;
             boolean isToolCallRow = line.color() == toolColor && line.text().startsWith("[");
-            if (line.collapsed() && isToolCallRow) {
+            if (line.collapsed() && isToolCallRow && truncateCollapsed) {
                 display.add(new ClaudeHudState.HudLine(truncate(line.text(), textW), line.color(), line.thought(), true));
                 continue;
             }
@@ -245,7 +247,14 @@ public class DynamicClaudeScreen extends Screen {
 
         String indicator = currentIndicator();
         if (!indicator.isEmpty()) {
-            display.add(new ClaudeHudState.HudLine(truncate(indicator, textW), ColorScheme.get().tool(), false, true));
+            if (truncateIndicator) {
+                display.add(new ClaudeHudState.HudLine(truncate(indicator, textW), ColorScheme.get().tool(), false, true));
+            } else {
+                List<String> wrapped = wrapTextRows(indicator, textW);
+                for (String row : wrapped) {
+                    display.add(new ClaudeHudState.HudLine(row, ColorScheme.get().tool(), false, true));
+                }
+            }
         }
 
         int textX = panelX + panelPadding;
