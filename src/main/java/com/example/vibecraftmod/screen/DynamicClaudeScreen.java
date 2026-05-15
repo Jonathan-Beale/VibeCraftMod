@@ -225,21 +225,28 @@ public class DynamicClaudeScreen extends Screen {
         historyLineHeight = lineHeight;
         boolean showThoughts = boolVal(widget, "showThoughts", ClaudeSettings.getBool("ui.thoughts_visible"));
         int scrollbarW = intVal(widget, "scrollbarWidth", 3);
+        int textW = panelW - panelPadding * 2 - scrollbarW;
 
         List<ClaudeHudState.HudLine> lines = ClaudeHudState.getLines();
         List<ClaudeHudState.HudLine> display = new ArrayList<>();
         for (ClaudeHudState.HudLine line : lines) {
             if (line.thought() && !showThoughts && !ClaudeHudState.isStreaming()) continue;
-            display.add(line);
+            if (line.collapsed()) {
+                display.add(new ClaudeHudState.HudLine(truncate(line.text(), textW), line.color(), line.thought(), true));
+                continue;
+            }
+            List<String> wrapped = wrapTextRows(line.text(), textW);
+            for (String row : wrapped) {
+                display.add(new ClaudeHudState.HudLine(row, line.color(), line.thought(), false));
+            }
         }
 
         String indicator = currentIndicator();
         if (!indicator.isEmpty()) {
-            display.add(new ClaudeHudState.HudLine(indicator, ColorScheme.get().tool(), false, true));
+            display.add(new ClaudeHudState.HudLine(truncate(indicator, textW), ColorScheme.get().tool(), false, true));
         }
 
         int textX = panelX + panelPadding;
-        int textW = panelW - panelPadding * 2 - scrollbarW;
         int visible = Math.max(1, h / lineHeight);
         int maxScroll = Math.max(0, display.size() - visible);
         scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset));
@@ -250,8 +257,7 @@ public class DynamicClaudeScreen extends Screen {
         int ty = y;
         for (int i = start; i < end; i++) {
             ClaudeHudState.HudLine line = display.get(i);
-            String text = truncate(line.text(), textW);
-            ctx.drawText(textRenderer, text, textX, ty, 0xFF000000 | (line.color() & 0x00FFFFFF), false);
+            ctx.drawText(textRenderer, line.text(), textX, ty, 0xFF000000 | (line.color() & 0x00FFFFFF), false);
             ty += lineHeight;
         }
 
