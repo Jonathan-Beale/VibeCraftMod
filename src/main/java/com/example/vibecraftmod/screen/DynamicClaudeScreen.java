@@ -740,6 +740,14 @@ public class DynamicClaudeScreen extends Screen {
             return true;
         }
 
+        if ((modifiers & GLFW.GLFW_MOD_CONTROL) != 0
+                && (modifiers & GLFW.GLFW_MOD_SHIFT) != 0
+                && keyCode == GLFW.GLFW_KEY_M
+                && "vibecraft".equalsIgnoreCase(activePlugin)) {
+            ModPackets.sendInput("__vc_mock_stream_test__", activePlugin);
+            return true;
+        }
+
         if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
             if ((modifiers & GLFW.GLFW_MOD_SHIFT) != 0) {
                 if (inputText.length() < inputMaxLength()) {
