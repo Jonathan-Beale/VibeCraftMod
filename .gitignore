@@ -9,6 +9,8 @@ bin/
 *.jar
 *.war
 *.ear
+!releases/
+!releases/*.jar
 
 # Logs
 logs/

@@ -65,9 +65,12 @@ $FabricApiJar = "fabric-api-$FabricApiVersion.jar"
 $FabricApiUrl = "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/$FabricApiVersion/$FabricApiJar"
 Invoke-WebRequest $FabricApiUrl -OutFile (Join-Path $ModsDir $FabricApiJar)
 
-# Copy VibeCraftMod jar into mods folder
-# Update the source path if your jar is in a different location.
-$VibeCraftModSource = "C:\\Temp\\VibeCraftMod-1.0.0.jar"
+# Copy VibeCraftMod jar from this repo into mods folder
+# Run this command block from the VibeCraftMod repo root.
+$VibeCraftModSource = Join-Path (Get-Location) "releases\\VibeCraftMod-1.0.0.jar"
+if (-not (Test-Path $VibeCraftModSource)) {
+  throw "Missing release jar: $VibeCraftModSource"
+}
 Copy-Item $VibeCraftModSource (Join-Path $ModsDir "VibeCraftMod-1.0.0.jar") -Force
 
 # Verify installed mod jars
