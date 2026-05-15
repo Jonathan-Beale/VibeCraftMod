@@ -193,6 +193,8 @@ public class SchemaScreen extends Screen {
                 colorVal(w, "color", 0xFF2A2A3A)));
         widgetRenderers.put("spacer", (ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY) -> {
         });
+        widgetRenderers.put("panel", (ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY) ->
+            renderPanel(ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY));
         }
 
         private void renderWidgetByType(DrawContext ctx, JsonObject widget, String type,
@@ -751,6 +753,32 @@ public class SchemaScreen extends Screen {
         }
     }
 
+    private void renderPanel(DrawContext ctx, JsonObject widget, int panelX, int panelW, int panelPadding,
+                             int titleHeight, int colLabel, int y, int h, int mouseX, int mouseY) {
+        int pad = intVal(widget, "padding", 0);
+
+        // Optional background fill
+        int bg = colorVal(widget, "background", 0);
+        if (bg != 0) {
+            ctx.fill(panelX + panelPadding, y, panelX + panelW - panelPadding, y + h, bg);
+        }
+
+        // Optional border outline
+        if (widget.has("border")) {
+            int borderColor = colorVal(widget, "border", 0xFF2A2A3A);
+            int bw = intVal(widget, "borderWidth", 1);
+            drawOutlinedBox(ctx, panelX + panelPadding, y, panelX + panelW - panelPadding, y + h,
+                    0, borderColor, bw);
+        }
+
+        // Render children widgets inside the panel, offset by padding
+        JsonArray children = arr(widget, "widgets");
+        if (children.size() > 0) {
+            renderWidgetsInRegion(ctx, children, panelX, panelW, panelPadding + pad,
+                    y + pad, h - pad * 2, mouseX, mouseY, colLabel);
+        }
+    }
+
     private void renderModal(DrawContext ctx, JsonObject widget, int mouseX, int mouseY, int colLabel) {
         int bg = colorVal(widget, "backdrop", 0xAA000000);
         ctx.fill(0, 0, width, height, bg);
@@ -1153,6 +1181,18 @@ public class SchemaScreen extends Screen {
             case "setting_toggle" -> intVal(w, "height", 18);
             case "state_badge" -> intVal(w, "height", 14);
             case "tab_container" -> intVal(w, "height", 220);
+            case "panel" -> {
+                if (w.has("height")) yield w.get("height").getAsInt();
+                JsonArray children = arr(w, "widgets");
+                int pad = intVal(w, "padding", 0);
+                int total = pad * 2;
+                for (int ci = 0; ci < children.size(); ci++) {
+                    if (!children.get(ci).isJsonObject()) continue;
+                    JsonObject child = children.get(ci).getAsJsonObject();
+                    total += widgetHeight(child, strVal(child, "type", ""), panelW, panelPadding);
+                }
+                yield total;
+            }
             case "modal" -> 0;
             case "divider" -> 1;
             case "spacer" -> intVal(w, "height", 8);
