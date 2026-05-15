@@ -190,6 +190,12 @@ public class ModPackets {
                         if (!l.isEmpty()) lines.addAll(parseMarkdownLine(l, cs));
                     }
                 }
+                case "THINKING" -> {
+                    for (String l : body.split("\n")) {
+                        l = l.stripTrailing();
+                        if (!l.isEmpty()) lines.add(new ClaudeHudState.HudLine(l, 0x888899, true, false));
+                    }
+                }
                 case "TOOL" -> {
                     String[] parts = header.split("\\|", 2);
                     String tool   = parts.length > 0 ? parts[0] : "";
