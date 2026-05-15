@@ -229,9 +229,11 @@ public class DynamicClaudeScreen extends Screen {
 
         List<ClaudeHudState.HudLine> lines = ClaudeHudState.getLines();
         List<ClaudeHudState.HudLine> display = new ArrayList<>();
+        int toolColor = ColorScheme.get().tool();
         for (ClaudeHudState.HudLine line : lines) {
             if (line.thought() && !showThoughts && !ClaudeHudState.isStreaming()) continue;
-            if (line.collapsed()) {
+            boolean isToolCallRow = line.color() == toolColor && line.text().startsWith("[");
+            if (line.collapsed() && isToolCallRow) {
                 display.add(new ClaudeHudState.HudLine(truncate(line.text(), textW), line.color(), line.thought(), true));
                 continue;
             }
