@@ -137,9 +137,17 @@ public class SchemaScreen extends Screen {
             screen.forceSchemaErrorView = !screen.forceSchemaErrorView;
             screen.activeDropdownId = null;
         });
+        INTERNAL_ACTIONS.put("toggle_collapsible", (screen, action, optionValue, targetPlugin) -> {
+            String id = strVal(action, "id", "");
+            if (!id.isBlank()) {
+                boolean current = screen.collapsibleOpen.getOrDefault(id, boolVal(action, "defaultOpen", false));
+                screen.collapsibleOpen.put(id, !current);
+            }
+        });
     }
 
     private record ClickTarget(int x, int y, int w, int h, JsonObject action, String optionValue, int z, long seq) {}
+    private record ScrollRegion(int x, int y, int w, int h, String id) {}
 
     private String inputText = "";
     private int cursor = 0;
@@ -153,6 +161,9 @@ public class SchemaScreen extends Screen {
     private final List<ClickTarget> clickTargets = new ArrayList<>();
     private long clickSeq = 0;
     private final Map<String, Integer> selectedTabByContainer = new HashMap<>();
+    private final Map<String, Boolean> collapsibleOpen = new HashMap<>();
+    private final Map<String, Integer> scrollPanelOffsets = new HashMap<>();
+    private final List<ScrollRegion> scrollRegions = new ArrayList<>();
         private final Map<String, WidgetRenderer> widgetRenderers = new HashMap<>();
     private String activeModalId = null;
     private String activeDropdownId = null;
@@ -195,6 +206,10 @@ public class SchemaScreen extends Screen {
         });
         widgetRenderers.put("panel", (ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY) ->
             renderPanel(ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY));
+        widgetRenderers.put("collapsible", (ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY) ->
+            renderCollapsible(ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY));
+        widgetRenderers.put("scroll_panel", (ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY) ->
+            renderScrollPanel(ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY));
         }
 
         private void renderWidgetByType(DrawContext ctx, JsonObject widget, String type,
@@ -216,6 +231,7 @@ public class SchemaScreen extends Screen {
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
         clickTargets.clear();
         clickSeq = 0;
+        scrollRegions.clear();
 
         if (forceSchemaErrorView || !UiSchemaStore.hasSchema()) {
             renderSchemaMissing(ctx, mouseX, mouseY);
@@ -779,6 +795,90 @@ public class SchemaScreen extends Screen {
         }
     }
 
+    private void renderCollapsible(DrawContext ctx, JsonObject widget, int panelX, int panelW, int panelPadding,
+                                   int titleHeight, int colLabel, int y, int h, int mouseX, int mouseY) {
+        String id = strVal(widget, "id", "");
+        boolean defOpen = boolVal(widget, "open", false);
+        boolean open = id.isBlank() ? defOpen : collapsibleOpen.getOrDefault(id, defOpen);
+        int headerH = intVal(widget, "headerHeight", 16);
+        String label = strVal(widget, "label", "");
+
+        // Header background
+        int headerBg = colorVal(widget, "headerBg", 0xFF111122);
+        int headerHoverBg = colorVal(widget, "headerHoverBg", 0xFF1A1A33);
+        int headerColor = colorVal(widget, "headerColor", 0xFFCCCCCC);
+        boolean hover = inBox(mouseX, mouseY, panelX + panelPadding, y, panelW - panelPadding * 2, headerH);
+        ctx.fill(panelX + panelPadding, y, panelX + panelW - panelPadding, y + headerH,
+                hover ? headerHoverBg : headerBg);
+
+        // Triangle indicator + label
+        String arrow = open ? "▼ " : "▶ ";
+        ctx.drawText(textRenderer, arrow + label, panelX + panelPadding + 4, y + (headerH - 8) / 2, headerColor, false);
+
+        // Click target for toggle
+        JsonObject toggleAction = new JsonObject();
+        toggleAction.addProperty("type", "toggle_collapsible");
+        toggleAction.addProperty("id", id);
+        toggleAction.addProperty("defaultOpen", defOpen);
+        addClickTarget(panelX + panelPadding, y, panelW - panelPadding * 2, headerH, toggleAction, null, Z_BASE + 1);
+
+        // Render children if open
+        if (open) {
+            int childrenBg = colorVal(widget, "background", 0xFF0A0A1A);
+            ctx.fill(panelX + panelPadding, y + headerH, panelX + panelW - panelPadding, y + h, childrenBg);
+
+            int pad = intVal(widget, "padding", 2);
+            renderWidgetsInRegion(ctx, arr(widget, "widgets"), panelX, panelW, panelPadding + pad,
+                    y + headerH + pad, h - headerH - pad * 2, mouseX, mouseY, colLabel);
+        }
+    }
+
+    private void renderScrollPanel(DrawContext ctx, JsonObject widget, int panelX, int panelW, int panelPadding,
+                                   int titleHeight, int colLabel, int y, int h, int mouseX, int mouseY) {
+        String id = strVal(widget, "id", "scroll_panel");
+        int scrollbarW = intVal(widget, "scrollbarWidth", 3);
+        int innerPad = intVal(widget, "padding", 0);
+
+        // Compute total children height
+        JsonArray children = arr(widget, "widgets");
+        int totalH = innerPad * 2;
+        for (int ci = 0; ci < children.size(); ci++) {
+            if (!children.get(ci).isJsonObject()) continue;
+            JsonObject child = children.get(ci).getAsJsonObject();
+            totalH += widgetHeight(child, strVal(child, "type", ""), panelW, panelPadding + scrollbarW);
+        }
+
+        int maxScroll = Math.max(0, totalH - h);
+        int scroll = Math.min(scrollPanelOffsets.getOrDefault(id, 0), maxScroll);
+        scrollPanelOffsets.put(id, scroll);
+
+        // Background
+        int bg = colorVal(widget, "background", 0);
+        if (bg != 0) ctx.fill(panelX + panelPadding, y, panelX + panelW - panelPadding, y + h, bg);
+
+        // Clip content to this region
+        ctx.enableScissor(panelX + panelPadding, y, panelX + panelW - panelPadding - scrollbarW - 1, y + h);
+        renderWidgetsInRegion(ctx, children, panelX, panelW - scrollbarW - 1, panelPadding + innerPad,
+                y - scroll + innerPad, h + scroll - innerPad, mouseX, mouseY, colLabel);
+        ctx.disableScissor();
+
+        // Scrollbar
+        if (maxScroll > 0) {
+            int sbX = panelX + panelW - panelPadding - scrollbarW;
+            int thumbH = Math.max(12, h * h / totalH);
+            int thumbY = y + (int)((long)(h - thumbH) * scroll / maxScroll);
+            int track = colorVal(widget, "scrollTrack", 0xFF1A1A28);
+            int thumb = colorVal(widget, "scrollThumb", 0xFF4A4A6A);
+            int activeColor = colorVal(widget, "scrollActive", 0xFF7070A0);
+            boolean thumbHover = inBox(mouseX, mouseY, sbX, thumbY, scrollbarW, thumbH);
+            ctx.fill(sbX, y, sbX + scrollbarW, y + h, track);
+            ctx.fill(sbX, thumbY, sbX + scrollbarW, thumbY + thumbH, thumbHover ? activeColor : thumb);
+        }
+
+        // Register region for mouseScrolled
+        scrollRegions.add(new ScrollRegion(panelX + panelPadding, y, panelW - panelPadding * 2, h, id));
+    }
+
     private void renderModal(DrawContext ctx, JsonObject widget, int mouseX, int mouseY, int colLabel) {
         int bg = colorVal(widget, "backdrop", 0xAA000000);
         ctx.fill(0, 0, width, height, bg);
@@ -962,6 +1062,15 @@ public class SchemaScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        // Check scroll panels first
+        for (ScrollRegion region : scrollRegions) {
+            if (mouseX >= region.x() && mouseX <= region.x() + region.w()
+                    && mouseY >= region.y() && mouseY <= region.y() + region.h()) {
+                int current = scrollPanelOffsets.getOrDefault(region.id(), 0);
+                scrollPanelOffsets.put(region.id(), Math.max(0, (int)(current - verticalAmount * 12)));
+                return true;
+            }
+        }
         if (mouseY >= historyTop && mouseY <= historyBottom) {
             scrollOffset = Math.max(0, (int) (scrollOffset + verticalAmount * 3));
             return true;
@@ -1193,6 +1302,22 @@ public class SchemaScreen extends Screen {
                 }
                 yield total;
             }
+            case "collapsible" -> {
+                int headerH = intVal(w, "headerHeight", 16);
+                String colId = strVal(w, "id", "");
+                boolean defOpen = boolVal(w, "open", false);
+                boolean open = colId.isBlank() ? defOpen : collapsibleOpen.getOrDefault(colId, defOpen);
+                if (!open) yield headerH;
+                JsonArray children = arr(w, "widgets");
+                int total = headerH;
+                for (int ci = 0; ci < children.size(); ci++) {
+                    if (!children.get(ci).isJsonObject()) continue;
+                    JsonObject child = children.get(ci).getAsJsonObject();
+                    total += widgetHeight(child, strVal(child, "type", ""), panelW, panelPadding);
+                }
+                yield total;
+            }
+            case "scroll_panel" -> intVal(w, "height", 200);
             case "modal" -> 0;
             case "divider" -> 1;
             case "spacer" -> intVal(w, "height", 8);
