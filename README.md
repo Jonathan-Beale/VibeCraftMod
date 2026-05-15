@@ -8,7 +8,7 @@ This project is client-only.
 
 - Actively used for dynamic plugin-driven screens (including EnchantForge catalog UI).
 - Safe for regular client use with matching server plugins.
-- Includes one documented gap in the generic overlay framework (see Known Gaps).
+- Includes plugin-scoped settings, registry-based internal actions, and basic schema-defined overlays.
 
 ## Requirements
 
@@ -123,12 +123,15 @@ LAN direct connect target:
 
 - Dynamic screen rendering from server-sent schema.
 - Plugin-scoped screens and actions.
+- Registry-based internal actions for schema buttons and controls.
+- Schema-defined HUD overlays for text, bars, icons, and item slots.
 - Client HUD chat rendering and tool status display.
 - Plugin message networking for:
   - message
   - request_history
   - set_setting
   - clear_history
+- Optional sequence/version guards for ordered plugin event payloads.
 - Runtime debug flags:
   - schema events
   - packet/event flow
@@ -146,29 +149,48 @@ LAN direct connect target:
 
 ## Known Gaps
 
-The generic overlay framework under src/main/java/com/example/vibecraftmod/ui is scaffolded but not fully wired for production use yet.
+The overlay and action systems are functional, but a few extension points remain intentionally lightweight.
 
 Current gap details:
 
-1. Overlay data binding is a stub.
-- OverlayDataBinding.resolve currently returns null for bindings.
+1. Overlay data binding is still simple.
+- OverlayDataBinding currently acts as an in-memory binding store.
+- Complex data source adapters still need to be added as needed.
 
-2. Generic overlay widgets are placeholders.
+2. Overlay widgets are functional but minimal.
 - SlotOverlayWidget
 - BarOverlayWidget
 - IconOverlayWidget
 - TextOverlayWidget
-Each class has TODO render logic.
+Each class renders a basic schema-driven representation and can be extended further.
 
-3. OverlayManager render pass is not currently registered to a Fabric HUD callback.
-- Schema reload can populate overlay definitions.
-- Existing active HUD rendering uses dedicated overlays:
-  - ClaudeHudOverlay
-  - ArmorHudOverlay
+3. The most advanced overlay behaviors still need richer layout and data adapters.
+- OverlayManager is now registered through the main HUD render path.
+- More complex overlay widgets can still be added without changing the renderer core.
 
 Impact:
 - Core dynamic screens and main chat/catalog workflows are functional.
-- The generic overlay subsystem should be treated as experimental until fully implemented.
+- The overlay subsystem is usable and extensible, but some data adapters remain intentionally minimal.
+
+## Architecture (2026+)
+
+- **Protocol Versioning**: Client-server packets include a protocol version, with conservative handling for mismatches and optional ordering metadata.
+- **Extensible Widget & Event System**: Widgets and events are registered via runtime registries. New types can be added by the server or plugins without client updates. Unknown types fall back to generic handlers.
+- **Reactive Data Binding**: Widgets can subscribe to data sources through the overlay binding store. The binding layer is intentionally simple but extensible.
+- **Partial Schema Updates**: The server can send partial schema diffs/patches for hot-reload and efficient UI changes. Full reload is not required for every change.
+- **Server-Driven Settings & Theming**: UI settings are settable via schema from the server and are isolated per plugin where appropriate.
+- **Extensible Event Handling**: Event handling is registry-based, with plugin-scoped history/settings handling and sequence guards.
+- **Schema Validation & Fallbacks**: Unknown/invalid widgets fall back cleanly, and the client keeps running even when a schema is missing or incomplete.
+
+## Migration Notes
+
+- Plugins and server-side tools should send protocol version and feature info in all packets.
+- Widget and event types should be registered at runtime using the provided registry APIs.
+- Buttons and controls can target internal client actions using the invoke_internal action type.
+- Overlay definitions should include plugin, type, position, size, and optional dataBinding fields.
+- For live UI updates, use the patchSchema API to send only changed parts of the schema.
+- Prefer plugin-scoped settings keys when a UI belongs to a specific plugin.
+- See code for examples of registering new widget/event types and subscribing to data bindings.
 
 ## Troubleshooting
 

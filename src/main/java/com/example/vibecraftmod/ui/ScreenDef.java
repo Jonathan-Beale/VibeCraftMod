@@ -30,9 +30,9 @@ public final class ScreenDef {
      * Parse a screen definition from JSON.
      * Expected structure:
      * {
-     *   "id": "vibecraft:claude",
+         *   "id": "vibecraft:chat",
      *   "plugin": "vibecraft",
-     *   "title": "Claude Chat",
+         *   "title": "VibeCraft Chat",
      *   "priority": 100,
      *   "config": { ... },
      *   "widgets": [ ... ]

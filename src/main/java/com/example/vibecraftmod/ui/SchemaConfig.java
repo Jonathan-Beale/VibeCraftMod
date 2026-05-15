@@ -8,6 +8,7 @@ import java.util.*;
 public final class SchemaConfig {
     private static SchemaConfig globalInstance;
     private static ScreenDef[] screens = new ScreenDef[0];
+    private static String defaultPlugin = null;
 
     public final KeybindDef[] keybinds;
     public final ColorConfig colors;
@@ -39,6 +40,15 @@ public final class SchemaConfig {
                 int widgetCount = screen.widgets != null ? screen.widgets.size() : 0;
                 System.out.println("[VibeCraftMod]   Screen '" + screen.id + "' (plugin: " + screen.plugin + ") has " + widgetCount + " widgets");
             }
+            // Print tab names from settings
+            if (globalInstance != null && globalInstance.settings != null && globalInstance.settings.tabs != null) {
+                System.out.print("[VibeCraftMod] Settings tabs: ");
+                for (int i = 0; i < globalInstance.settings.tabs.length; i++) {
+                    System.out.print(globalInstance.settings.tabs[i].name);
+                    if (i < globalInstance.settings.tabs.length - 1) System.out.print(", ");
+                }
+                System.out.println();
+            }
         }
     }
 
@@ -56,6 +66,19 @@ public final class SchemaConfig {
         return null;
     }
 
+    /** Get the default plugin from schema, or fallback to highest-priority screen's plugin */
+    public static synchronized String getDefaultPlugin() {
+        if (defaultPlugin != null && !defaultPlugin.isBlank()) {
+            return defaultPlugin;
+        }
+        // Fallback: use plugin of first (highest-priority) screen
+        ScreenDef[] allScreens = getScreens();
+        if (allScreens.length > 0) {
+            return allScreens[0].plugin;
+        }
+        return null;
+    }
+
     /** Create a SchemaConfig from a JSON object (for per-screen configs) */
     public static SchemaConfig fromJson(JsonObject configObj) {
         return new SchemaConfig(configObj);
@@ -63,6 +86,9 @@ public final class SchemaConfig {
 
     private static SchemaConfig loadFromSchema() {
         JsonObject schema = UiSchemaStore.getSchema();
+        if (schema == null) {
+            return new SchemaConfig(new JsonObject());
+        }
         if (schema.has("config") && schema.get("config").isJsonObject()) {
             return new SchemaConfig(schema.getAsJsonObject("config"));
         }
@@ -83,6 +109,11 @@ public final class SchemaConfig {
     private static void loadScreens() {
         JsonObject schema = UiSchemaStore.getSchema();
         List<ScreenDef> screenList = new ArrayList<>();
+
+        if (schema == null) {
+            screens = new ScreenDef[0];
+            return;
+        }
 
         if (schema.has("screens") && schema.get("screens").isJsonArray()) {
             for (JsonElement e : schema.getAsJsonArray("screens")) {
@@ -105,16 +136,15 @@ public final class SchemaConfig {
         if (arr == null) return new KeybindDef[0];
         List<KeybindDef> list = new ArrayList<>();
         for (JsonElement e : arr) {
-            if (e.isJsonObject()) {
-                JsonObject o = e.getAsJsonObject();
-                list.add(new KeybindDef(
-                    o.get("id").getAsString(),
-                    o.get("label").getAsString(),
-                    o.get("defaultKey").getAsString(),
-                    o.get("defaultMods").getAsInt(),
-                    o.get("useMods").getAsBoolean()
-                ));
-            }
+            if (!e.isJsonObject()) continue;
+            JsonObject o = e.getAsJsonObject();
+            if (!o.has("id") || !o.has("defaultKey")) continue;
+            String id       = o.get("id").getAsString();
+            String label    = o.has("label") ? o.get("label").getAsString() : id;
+            String defKey   = o.get("defaultKey").getAsString();
+            int    defMods  = o.has("defaultMods") ? o.get("defaultMods").getAsInt() : 0;
+            boolean useMods = o.has("useMods") && o.get("useMods").getAsBoolean();
+            list.add(new KeybindDef(id, label, defKey, defMods, useMods));
         }
         return list.toArray(new KeybindDef[0]);
     }
@@ -290,6 +320,11 @@ public final class SchemaConfig {
                             o.get("label").getAsString(),
                             o.get("useMods").getAsBoolean()
                         );
+                        case "color_scheme" -> new ColorSchemeRow();
+                        case "color" -> new ColorRow(
+                            o.get("key").getAsString(),
+                            o.get("label").getAsString()
+                        );
                         default -> null;
                     });
                 }
@@ -298,11 +333,13 @@ public final class SchemaConfig {
         }
     }
 
-    public sealed interface SettingsRow permits SectionRow, ToggleRow, IntRangeRow, KeybindRow {}
+    public sealed interface SettingsRow permits SectionRow, ToggleRow, IntRangeRow, KeybindRow, ColorSchemeRow, ColorRow {}
     public record SectionRow(String title) implements SettingsRow {}
     public record ToggleRow(String key, String label) implements SettingsRow {}
     public record IntRangeRow(String key, String label, int min, int max) implements SettingsRow {}
     public record KeybindRow(String id, String label, boolean useMods) implements SettingsRow {}
+    public record ColorSchemeRow() implements SettingsRow {}
+    public record ColorRow(String key, String label) implements SettingsRow {}
 
     public static class HelpConfig {
         public final String title;

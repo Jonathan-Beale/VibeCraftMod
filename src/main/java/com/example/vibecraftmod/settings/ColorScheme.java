@@ -1,11 +1,17 @@
 package com.example.vibecraftmod.settings;
 
 import com.example.vibecraftmod.ui.SchemaConfig;
+import com.example.vibecraftmod.ui.ScreenManager;
 
 public record ColorScheme(int user, int claude, int tool, int output, int system, int question) {
 
     public static ColorScheme get() {
-        String name = ClaudeSettings.get("ui.color_scheme");
+        String active = ScreenManager.getActivePlugin();
+        return get((active == null || active.isBlank()) ? "vibecraft" : active);
+    }
+
+    public static ColorScheme get(String plugin) {
+        String name = ModSettings.getForPlugin(plugin, "ui.color_scheme");
         SchemaConfig config = SchemaConfig.get();
         
         // Try to find in schema schemes
@@ -18,12 +24,12 @@ public record ColorScheme(int user, int claude, int tool, int output, int system
         // Check if custom
         if ("custom".equals(name)) {
             return new ColorScheme(
-                    hex(ClaudeSettings.get("color.user"),     0x55FF55),
-                    hex(ClaudeSettings.get("color.claude"),   0x55FFFF),
-                    hex(ClaudeSettings.get("color.tool"),     0xFFAA00),
-                    hex(ClaudeSettings.get("color.output"),   0x888888),
-                    hex(ClaudeSettings.get("color.system"),   0xAAAAAA),
-                    hex(ClaudeSettings.get("color.question"), 0xFFFF55));
+                    hex(ModSettings.getForPlugin(plugin, "color.user"),     0x55FF55),
+                    hex(ModSettings.getForPlugin(plugin, "color.claude"),   0x55FFFF),
+                    hex(ModSettings.getForPlugin(plugin, "color.tool"),     0xFFAA00),
+                    hex(ModSettings.getForPlugin(plugin, "color.output"),   0x888888),
+                    hex(ModSettings.getForPlugin(plugin, "color.system"),   0xAAAAAA),
+                    hex(ModSettings.getForPlugin(plugin, "color.question"), 0xFFFF55));
         }
         
         // Default to first scheme from schema, or hardcoded terminal
@@ -68,6 +74,16 @@ public record ColorScheme(int user, int claude, int tool, int output, int system
 
     public static String[][] getRoles() {
         SchemaConfig config = SchemaConfig.get();
+        if (config.colors.roles.length == 0) {
+            return new String[][] {
+                    {"color.user", "User Text"},
+                    {"color.claude", "Claude Text"},
+                    {"color.tool", "Tool Calls"},
+                    {"color.output", "Command Output"},
+                    {"color.system", "System Messages"},
+                    {"color.question", "Questions"}
+            };
+        }
         String[][] roles = new String[config.colors.roles.length][2];
         for (int i = 0; i < config.colors.roles.length; i++) {
             roles[i][0] = config.colors.roles[i].key;
@@ -93,6 +109,15 @@ public record ColorScheme(int user, int claude, int tool, int output, int system
         if (s == null || s.isBlank()) return fallback;
         try { return (int)(Long.parseLong(s.replaceFirst("^#", ""), 16)) & 0xFFFFFF; }
         catch (NumberFormatException e) { return fallback; }
+    }
+
+    public static int hex(com.google.gson.JsonObject obj, String key, int fallback) {
+        if (obj == null || !obj.has(key)) return fallback;
+        com.google.gson.JsonElement elem = obj.get(key);
+        if (elem.isJsonPrimitive()) {
+            return hex(elem.getAsString(), fallback);
+        }
+        return fallback;
     }
 
     private static int[] buildPalette() {
@@ -137,3 +162,4 @@ public record ColorScheme(int user, int claude, int tool, int output, int system
         return (c << 16) | (c << 8) | c;
     }
 }
+

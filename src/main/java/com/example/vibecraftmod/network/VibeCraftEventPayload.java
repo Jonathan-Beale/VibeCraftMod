@@ -7,19 +7,22 @@ import net.minecraft.util.Identifier;
 
 import java.nio.charset.StandardCharsets;
 
-public record VibeCraftEventPayload(String json) implements CustomPayload {
+public record VibeCraftEventPayload(String json, int protocolVersion) implements CustomPayload {
 
-    public static final CustomPayload.Id<VibeCraftEventPayload> ID =
+        public static final int PROTOCOL_VERSION = 1;
+        public static final CustomPayload.Id<VibeCraftEventPayload> ID =
             new CustomPayload.Id<>(Identifier.of("vibecraft", "events"));
 
-    public static final PacketCodec<RegistryByteBuf, VibeCraftEventPayload> CODEC =
+        public static final PacketCodec<RegistryByteBuf, VibeCraftEventPayload> CODEC =
             PacketCodec.of(
-                    (value, buf) -> buf.writeBytes(value.json().getBytes(StandardCharsets.UTF_8)),
-                    buf -> {
-                        byte[] bytes = new byte[buf.readableBytes()];
-                        buf.readBytes(bytes);
-                        return new VibeCraftEventPayload(new String(bytes, StandardCharsets.UTF_8));
-                    });
+                (value, buf) -> {
+                buf.writeBytes(value.json().getBytes(StandardCharsets.UTF_8));
+                },
+                buf -> {
+                byte[] bytes = new byte[buf.readableBytes()];
+                buf.readBytes(bytes);
+                return new VibeCraftEventPayload(new String(bytes, StandardCharsets.UTF_8), PROTOCOL_VERSION);
+                });
 
     @Override
     public CustomPayload.Id<? extends CustomPayload> getId() { return ID; }

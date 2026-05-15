@@ -1,29 +1,35 @@
 package com.example.vibecraftmod.ui;
 
 import com.google.gson.JsonObject;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.DrawContext;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Base interface for all overlay widgets.
  */
 public interface OverlayWidget {
-    void render(OverlayDef def, Object data /*, rendering context */);
+    void render(DrawContext context, MinecraftClient client, OverlayDef def, Object data);
 
     /**
-     * Factory for creating overlay widgets by type.
+     * Registry for overlay widget types.
      */
+    Map<String, OverlayWidgetFactory> REGISTRY = new HashMap<>();
+
+    static void register(String type, OverlayWidgetFactory factory) {
+        REGISTRY.put(type, factory);
+    }
+
     static OverlayWidget create(String type, JsonObject config) {
-        switch (type) {
-            case "armor_slots":
-            case "slots":
-                return new SlotOverlayWidget(config);
-            case "bar":
-                return new BarOverlayWidget(config);
-            case "icon":
-                return new IconOverlayWidget(config);
-            case "text":
-                return new TextOverlayWidget(config);
-            default:
-                return new UnknownOverlayWidget(type);
+        OverlayWidgetFactory factory = REGISTRY.get(type);
+        if (factory != null) {
+            return factory.create(config);
         }
+        return new UnknownOverlayWidget(type);
+    }
+
+    interface OverlayWidgetFactory {
+        OverlayWidget create(JsonObject config);
     }
 }

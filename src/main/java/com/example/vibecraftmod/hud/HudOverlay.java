@@ -1,7 +1,9 @@
 package com.example.vibecraftmod.hud;
 
-import com.example.vibecraftmod.settings.ClaudeSettings;
+import com.example.vibecraftmod.settings.ModSettings;
 import com.example.vibecraftmod.settings.ColorScheme;
+import com.example.vibecraftmod.ui.ScreenManager;
+import com.example.vibecraftmod.ui.OverlayManager;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -9,25 +11,25 @@ import net.minecraft.client.render.RenderTickCounter;
 
 import java.util.List;
 
-public class ClaudeHudOverlay {
+public class HudOverlay {
 
     private static final int PANEL_WIDTH    = 280;
     private static final int LINE_HEIGHT    = 10;
     private static final int PADDING        = 5;
-    // MAX_VISIBLE is now dynamic — see ClaudeSettings.hudLines()
+    // MAX_VISIBLE is now dynamic — see ModSettings.hudLines()
     private static final int TOP_MARGIN     = 4;
     private static final long FADE_DURATION = 5000; // ms after stream ends before fading
     private static final long FADE_TIME     = 2000; // ms fade duration
 
     public static void register() {
-        HudRenderCallback.EVENT.register(ClaudeHudOverlay::render);
+        HudRenderCallback.EVENT.register(HudOverlay::render);
     }
 
     private static void render(DrawContext context, RenderTickCounter tickCounter) {
-        if (!ClaudeHudState.isVisible()) return;
+        if (!HudState.isVisible()) return;
 
-        boolean streaming = ClaudeHudState.isStreaming();
-        long endTime = ClaudeHudState.getStreamEndTime();
+        boolean streaming = HudState.isStreaming();
+        long endTime = HudState.getStreamEndTime();
         long now = System.currentTimeMillis();
 
         // Determine opacity: full while streaming or recently active, fade out after
@@ -47,19 +49,19 @@ public class ClaudeHudOverlay {
         if (alpha <= 0) return;
 
         MinecraftClient client = MinecraftClient.getInstance();
-        List<ClaudeHudState.HudLine> lines = ClaudeHudState.getLines();
+        List<HudState.HudLine> lines = HudState.getLines();
 
         // Show last N lines per settings (0 = HUD fully disabled)
-        int maxVisible = ClaudeSettings.hudLines();
+        int maxVisible = ModSettings.hudLines();
         if (maxVisible == 0) return;
         int start = Math.max(0, lines.size() - maxVisible);
-        List<ClaudeHudState.HudLine> visible = lines.subList(start, lines.size());
+        List<HudState.HudLine> visible = lines.subList(start, lines.size());
 
         // Add streaming indicator if active
         String toolIndicator = null;
         if (streaming) {
-            String tool   = ClaudeHudState.getCurrentTool();
-            String detail = ClaudeHudState.getCurrentToolDetail();
+            String tool   = HudState.getCurrentTool();
+            String detail = HudState.getCurrentToolDetail();
             toolIndicator = tool != null
                     ? "⏳ [" + tool + "] " + (detail != null ? detail : "")
                     : "⏳ Processing…";
@@ -81,7 +83,7 @@ public class ClaudeHudOverlay {
 
         // Render lines
         int ty = y;
-        for (ClaudeHudState.HudLine line : visible) {
+        for (HudState.HudLine line : visible) {
             int color = (alpha << 24) | (line.color() & 0x00FFFFFF);
             String text = truncate(line.text(), PANEL_WIDTH, client);
             context.drawText(client.textRenderer, text, x, ty, color, false);
@@ -90,10 +92,14 @@ public class ClaudeHudOverlay {
 
         // Streaming indicator
         if (toolIndicator != null) {
-            int toolColor = (alpha << 24) | (ColorScheme.get().tool() & 0x00FFFFFF);
+            String plugin = ScreenManager.getActivePlugin();
+            if (plugin == null || plugin.isBlank()) plugin = "vibecraft";
+            int toolColor = (alpha << 24) | (ColorScheme.get(plugin).tool() & 0x00FFFFFF);
             context.drawText(client.textRenderer,
                     truncate(toolIndicator, PANEL_WIDTH, client), x, ty, toolColor, false);
         }
+
+        OverlayManager.renderAll(context);
     }
 
     private static String truncate(String text, int maxWidth, MinecraftClient client) {
@@ -104,3 +110,4 @@ public class ClaudeHudOverlay {
         return text + "…";
     }
 }
+

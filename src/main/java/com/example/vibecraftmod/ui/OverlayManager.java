@@ -1,5 +1,7 @@
 package com.example.vibecraftmod.ui;
 
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.DrawContext;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -37,12 +39,20 @@ public final class OverlayManager {
     }
 
     // Call this from the HUD render pass
-    public static void renderAll(/* context params, e.g. player */) {
+    public static void renderAll(DrawContext context) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.player == null || client.options.hudHidden) return;
+        String activePlugin = ScreenManager.getActivePlugin();
         for (int i = 0; i < overlays.size(); i++) {
             OverlayDef def = overlays.get(i);
+            if (def.plugin != null && !def.plugin.isBlank()
+                    && activePlugin != null && !activePlugin.isBlank()
+                    && !def.plugin.equalsIgnoreCase(activePlugin)) {
+                continue;
+            }
             OverlayWidget widget = widgets.get(i);
-            Object data = OverlayDataBinding.resolve(def.dataBinding); // TODO: implement data binding
-            widget.render(def, data /*, context */);
+            Object data = OverlayDataBinding.resolve(def.dataBinding);
+            widget.render(context, client, def, data);
         }
     }
 

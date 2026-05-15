@@ -4,7 +4,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public class ClaudeHudState {
+public class HudState {
+    // Toggle the display of thoughts (for UI actions)
+    public static synchronized void toggleThoughts() {
+        // This is a stub. Implement toggling logic as needed.
+        // For now, just print to console for debug.
+        System.out.println("[VibeCraftMod] toggleThoughts called");
+    }
 
     public record HudLine(String text, int color, boolean thought, boolean collapsed) {
         public HudLine(String text, int color)                  { this(text, color, false, false); }

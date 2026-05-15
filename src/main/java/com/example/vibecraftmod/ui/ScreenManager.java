@@ -8,9 +8,26 @@ import java.util.*;
  * widgets, and action handlers.
  */
 public final class ScreenManager {
+        // Closes the current modal (for UI actions)
+        public static void closeModal() {
+            // In this mod, closing a modal is equivalent to setting the screen to null
+            net.minecraft.client.MinecraftClient.getInstance().setScreen(null);
+        }
+
+        // Opens a modal by ID (for UI actions)
+        public static void openModal(String modalId) {
+            // This is a stub. Implement modal logic as needed.
+            // For now, just print to console for debug.
+            System.out.println("[VibeCraftMod] openModal called with modalId=" + modalId);
+        }
     private static String activeScreenId;
 
     private ScreenManager() {}
+
+    /** Reset active screen ID so next access re-initialises from schema. */
+    public static synchronized void reset() {
+        activeScreenId = null;
+    }
 
     /** Initialize with the first available screen */
     public static synchronized void init() {
@@ -38,6 +55,18 @@ public final class ScreenManager {
         if (screen != null) {
             activeScreenId = screenId;
             return true;
+        }
+        return false;
+    }
+
+    /** Switch to the highest-priority screen owned by a plugin. */
+    public static synchronized boolean setActiveScreenForPlugin(String pluginId) {
+        if (pluginId == null || pluginId.isBlank()) return false;
+        for (ScreenDef screen : SchemaConfig.getScreens()) {
+            if (pluginId.equalsIgnoreCase(screen.plugin)) {
+                activeScreenId = screen.id;
+                return true;
+            }
         }
         return false;
     }

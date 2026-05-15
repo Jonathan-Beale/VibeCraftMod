@@ -25,12 +25,15 @@ public final class OverlayDef {
     }
 
     public static OverlayDef fromJson(JsonObject obj) {
-        String id = obj.get("id").getAsString();
-        String plugin = obj.get("plugin").getAsString();
-        String type = obj.get("type").getAsString();
-        Position position = Position.fromJson(obj.getAsJsonObject("position"));
-        Size size = Size.fromJson(obj.getAsJsonObject("size"));
-        Style style = Style.fromJson(obj.getAsJsonObject("style"));
+        String id = obj.has("id") ? obj.get("id").getAsString() : "overlay";
+        String plugin = obj.has("plugin") ? obj.get("plugin").getAsString() : "vibecraft";
+        String type = obj.has("type") ? obj.get("type").getAsString() : "text";
+        Position position = Position.fromJson(obj.has("position") && obj.get("position").isJsonObject()
+            ? obj.getAsJsonObject("position") : new JsonObject());
+        Size size = Size.fromJson(obj.has("size") && obj.get("size").isJsonObject()
+            ? obj.getAsJsonObject("size") : new JsonObject());
+        Style style = Style.fromJson(obj.has("style") && obj.get("style").isJsonObject()
+            ? obj.getAsJsonObject("style") : new JsonObject());
         String dataBinding = obj.has("dataBinding") ? obj.get("dataBinding").getAsString() : null;
         return new OverlayDef(id, plugin, type, position, size, style, dataBinding);
     }
@@ -42,8 +45,8 @@ public final class OverlayDef {
             this.x = x; this.y = y; this.anchor = anchor;
         }
         public static Position fromJson(JsonObject obj) {
-            int x = obj.get("x").getAsInt();
-            int y = obj.get("y").getAsInt();
+            int x = obj.has("x") ? obj.get("x").getAsInt() : 0;
+            int y = obj.has("y") ? obj.get("y").getAsInt() : 0;
             String anchor = obj.has("anchor") ? obj.get("anchor").getAsString() : "left";
             return new Position(x, y, anchor);
         }
@@ -54,8 +57,8 @@ public final class OverlayDef {
             this.width = width; this.height = height;
         }
         public static Size fromJson(JsonObject obj) {
-            int width = obj.get("width").getAsInt();
-            int height = obj.get("height").getAsInt();
+            int width = obj.has("width") ? obj.get("width").getAsInt() : 0;
+            int height = obj.has("height") ? obj.get("height").getAsInt() : 0;
             return new Size(width, height);
         }
     }

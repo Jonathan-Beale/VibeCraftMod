@@ -95,6 +95,10 @@ public final class PluginConfig {
                 }
             }
         }
+        // Allow opening the terminal before schema arrives so the user sees schema-missing errors.
+        if ("vibecraft".equalsIgnoreCase(pluginId) && "open_menu".equals(actionId)) {
+            return GLFW.GLFW_KEY_GRAVE_ACCENT;
+        }
         return -1;
     }
 
@@ -106,6 +110,9 @@ public final class PluginConfig {
                     return def.defaultMods;
                 }
             }
+        }
+        if ("vibecraft".equalsIgnoreCase(pluginId) && "open_menu".equals(actionId)) {
+            return 0;
         }
         return 0;
     }

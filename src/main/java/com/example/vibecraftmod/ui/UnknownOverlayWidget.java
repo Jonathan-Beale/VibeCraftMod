@@ -1,5 +1,8 @@
 package com.example.vibecraftmod.ui;
 
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.DrawContext;
+
 /**
  * Fallback widget for unknown overlay types.
  */
@@ -9,7 +12,7 @@ public class UnknownOverlayWidget implements OverlayWidget {
         this.type = type;
     }
     @Override
-    public void render(OverlayDef def, Object data /*, rendering context */) {
+    public void render(DrawContext context, MinecraftClient client, OverlayDef def, Object data) {
         // Optionally render a warning or nothing
     }
 }
