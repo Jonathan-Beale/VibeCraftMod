@@ -87,7 +87,7 @@ public class ModPackets {
                     JsonArray lines = obj.getAsJsonArray("lines");
                     int claudeColor = ColorScheme.get().claude();
                     for (var el : lines) {
-                        ClaudeHudState.addLine(el.getAsString(), claudeColor);
+                        ClaudeHudState.addLine(stripLegacyFormatting(el.getAsString()), claudeColor);
                     }
                 }
                 case "bash_output" -> {
@@ -265,5 +265,10 @@ public class ModPackets {
         if (line.equals("---") || line.equals("***") || line.equals("___"))
             return List.of(new ClaudeHudState.HudLine("────────────────────", cs.system()));
         return List.of(new ClaudeHudState.HudLine(line, cs.claude()));
+    }
+
+    private static String stripLegacyFormatting(String text) {
+        if (text == null || text.isEmpty()) return "";
+        return text.replaceAll("§[0-9A-FK-ORa-fk-or]", "");
     }
 }
