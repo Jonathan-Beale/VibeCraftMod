@@ -32,6 +32,65 @@ Version source:
 Windows mods path:
 - %APPDATA%\\.minecraft\\mods
 
+### Player Setup Commands (Windows PowerShell)
+
+Run this in a normal PowerShell window on the player's PC.
+
+```powershell
+$ErrorActionPreference = "Stop"
+
+# Versions
+$MinecraftVersion = "1.21.4"
+$LoaderVersion = "0.16.9"
+$FabricApiVersion = "0.112.0+1.21.4"
+
+# Paths
+$McDir = Join-Path $env:APPDATA ".minecraft"
+$ModsDir = Join-Path $McDir "mods"
+New-Item -ItemType Directory -Path $ModsDir -Force | Out-Null
+
+# Ensure Java exists (Fabric installer requires Java)
+if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
+  Write-Host "Java not found. Installing Temurin 21..."
+  winget install EclipseAdoptium.Temurin.21.JDK --accept-package-agreements --accept-source-agreements
+}
+
+# Download and run Fabric installer (client profile)
+$FabricInstaller = Join-Path $env:TEMP "fabric-installer.jar"
+Invoke-WebRequest "https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.0.1/fabric-installer-1.0.1.jar" -OutFile $FabricInstaller
+java -jar $FabricInstaller client -dir $McDir -mcversion $MinecraftVersion -loader $LoaderVersion
+
+# Install Fabric API
+$FabricApiJar = "fabric-api-$FabricApiVersion.jar"
+$FabricApiUrl = "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/$FabricApiVersion/$FabricApiJar"
+Invoke-WebRequest $FabricApiUrl -OutFile (Join-Path $ModsDir $FabricApiJar)
+
+# Copy VibeCraftMod jar into mods folder
+# Update the source path if your jar is in a different location.
+$VibeCraftModSource = "C:\\Temp\\VibeCraftMod-1.0.0.jar"
+Copy-Item $VibeCraftModSource (Join-Path $ModsDir "VibeCraftMod-1.0.0.jar") -Force
+
+# Verify installed mod jars
+Get-ChildItem $ModsDir | Where-Object { $_.Name -match "fabric-api|VibeCraftMod" } | Select-Object Name, Length, LastWriteTime
+```
+
+### Launch And Join Commands (Windows)
+
+```powershell
+# Launch Minecraft Launcher (default install path)
+Start-Process "$env:LOCALAPPDATA\Programs\Minecraft Launcher\MinecraftLauncher.exe"
+
+# After launching, choose the Fabric profile for 1.21.4 and join the LAN server:
+# 192.168.1.12:25565
+```
+
+### Client Log Check Commands
+
+```powershell
+$ClientLog = Join-Path $env:APPDATA ".minecraft\logs\latest.log"
+Select-String -Path $ClientLog -Pattern "VibeCraftMod|open_screen|ui_schema|handleEvent" | Select-Object -Last 80
+```
+
 ## Build From Source
 
 From the VibeCraftMod folder:
@@ -52,6 +111,10 @@ If another player (for example your brother) needs the same UI features:
 1. Give them the same VibeCraftMod jar.
 2. Ensure they also use Fabric + Fabric API on Minecraft 1.21.4.
 3. Keep their mod version synchronized with your current server/plugin-compatible build.
+
+LAN direct connect target:
+
+- 192.168.1.12:25565
 
 ## Features
 
