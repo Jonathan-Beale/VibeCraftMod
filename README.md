@@ -10,6 +10,10 @@ This project is client-only.
 - Safe for regular client use with matching server plugins.
 - Includes plugin-scoped settings, registry-based internal actions, and basic schema-defined overlays.
 
+Compatibility note:
+- EnchantForge cooldown isolation (per-item behavior for same-material items) is handled server-side in the plugin.
+- No VibeCraftMod-side code change is required for that cooldown behavior.
+
 ## Requirements
 
 - Minecraft: 1.21.4

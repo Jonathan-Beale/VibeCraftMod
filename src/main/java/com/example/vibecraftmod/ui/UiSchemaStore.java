@@ -2,7 +2,11 @@ package com.example.vibecraftmod.ui;
 
 import com.example.vibecraftmod.DebugConfig;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+
+import java.util.HashSet;
+import java.util.Set;
 
 public final class UiSchemaStore {
     private UiSchemaStore() {}
@@ -22,7 +26,7 @@ public final class UiSchemaStore {
 
 
     public static synchronized void setSchema(JsonObject value) {
-      schema = value;
+      schema = mergeSchemaByPlugin(schema, value);
       if (DebugConfig.DEBUG_SCHEMA) {
         System.out.println("[VibeCraftMod] UiSchemaStore.setSchema: schema set, triggering reload");
         // Print out the schema source (top-level keys and screen IDs)
@@ -50,6 +54,68 @@ public final class UiSchemaStore {
       SchemaConfig.reload();
       ScreenManager.reload();
       OverlayManager.reload();
+    }
+
+    /**
+     * Merge full-schema updates by plugin so one plugin does not wipe all others.
+     * Incoming screens replace existing screens for the same plugin(s), while other
+     * plugins' screens remain intact.
+     */
+    private static JsonObject mergeSchemaByPlugin(JsonObject current, JsonObject incoming) {
+      if (incoming == null) return current;
+      if (current == null) return incoming;
+
+      boolean incomingHasScreens = incoming.has("screens") && incoming.get("screens").isJsonArray();
+      if (!incomingHasScreens) {
+        return incoming;
+      }
+
+      JsonObject merged = current.deepCopy();
+
+      JsonArray incomingScreens = incoming.getAsJsonArray("screens");
+      Set<String> replacedPlugins = new HashSet<>();
+      for (JsonElement el : incomingScreens) {
+        if (!el.isJsonObject()) continue;
+        JsonObject screen = el.getAsJsonObject();
+        if (!screen.has("plugin") || !screen.get("plugin").isJsonPrimitive()) continue;
+        String pluginId = screen.get("plugin").getAsString();
+        if (pluginId != null && !pluginId.isBlank()) {
+          replacedPlugins.add(pluginId);
+        }
+      }
+
+      JsonArray existingScreens = (merged.has("screens") && merged.get("screens").isJsonArray())
+              ? merged.getAsJsonArray("screens")
+              : new JsonArray();
+
+      JsonArray mergedScreens = new JsonArray();
+      for (JsonElement el : existingScreens) {
+        if (!el.isJsonObject()) {
+          mergedScreens.add(el.deepCopy());
+          continue;
+        }
+        JsonObject screen = el.getAsJsonObject();
+        if (screen.has("plugin") && screen.get("plugin").isJsonPrimitive()) {
+          String pluginId = screen.get("plugin").getAsString();
+          if (replacedPlugins.contains(pluginId)) {
+            continue;
+          }
+        }
+        mergedScreens.add(screen.deepCopy());
+      }
+
+      for (JsonElement el : incomingScreens) {
+        mergedScreens.add(el.deepCopy());
+      }
+      merged.add("screens", mergedScreens);
+
+      // Merge other top-level keys from incoming (except screens, handled above).
+      for (String key : incoming.keySet()) {
+        if ("screens".equals(key)) continue;
+        merged.add(key, incoming.get(key).deepCopy());
+      }
+
+      return merged;
     }
 
     /**

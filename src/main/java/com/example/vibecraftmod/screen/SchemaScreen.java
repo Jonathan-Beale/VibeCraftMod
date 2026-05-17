@@ -24,9 +24,14 @@ import net.minecraft.util.Formatting;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public class SchemaScreen extends Screen {
 
@@ -144,10 +149,42 @@ public class SchemaScreen extends Screen {
                 screen.collapsibleOpen.put(id, !current);
             }
         });
+        INTERNAL_ACTIONS.put("set_text_focus", (screen, action, optionValue, targetPlugin) -> {
+            String id = strVal(action, "id", "");
+            if (!id.isBlank()) {
+                String value = screen.textFieldValue(id);
+                screen.activeTextFieldId = id;
+                screen.textFieldCursor.put(id, Math.min(screen.textFieldCursor.getOrDefault(id, value.length()), value.length()));
+            }
+        });
+        INTERNAL_ACTIONS.put("clear_text_state", (screen, action, optionValue, targetPlugin) -> {
+            String id = strVal(action, "id", "");
+            if (!id.isBlank()) {
+                screen.setTextFieldValue(id, "");
+                screen.textFieldCursor.put(id, 0);
+                screen.activeTextFieldId = id;
+            }
+        });
+        INTERNAL_ACTIONS.put("toggle_query_token", (screen, action, optionValue, targetPlugin) -> {
+            String stateId = strVal(action, "stateId", "");
+            String token = strVal(action, "token", "").toLowerCase(Locale.ROOT).trim();
+            if (stateId.isBlank() || token.isBlank()) return;
+
+            screen.toggleFacetToken(stateId, token);
+            screen.textFieldCursor.put(stateId, screen.textFieldValue(stateId).length());
+            screen.activeTextFieldId = stateId;
+        });
     }
 
     private record ClickTarget(int x, int y, int w, int h, JsonObject action, String optionValue, int z, long seq) {}
     private record ScrollRegion(int x, int y, int w, int h, String id) {}
+    private record LayoutRow(int index, int z, JsonObject widget, String type, int y, int h) {}
+
+    private static final class FilterState {
+        private String textQuery = "";
+        private final LinkedHashSet<String> selectedTags = new LinkedHashSet<>();
+        private final LinkedHashSet<String> selectedItems = new LinkedHashSet<>();
+    }
 
     private String inputText = "";
     private int cursor = 0;
@@ -164,7 +201,11 @@ public class SchemaScreen extends Screen {
     private final Map<String, Boolean> collapsibleOpen = new HashMap<>();
     private final Map<String, Integer> scrollPanelOffsets = new HashMap<>();
     private final List<ScrollRegion> scrollRegions = new ArrayList<>();
-        private final Map<String, WidgetRenderer> widgetRenderers = new HashMap<>();
+    private final Map<String, String> textFieldValues = new HashMap<>();
+    private final Map<String, Integer> textFieldCursor = new HashMap<>();
+    private final Map<String, FilterState> filterStates = new HashMap<>();
+    private final Map<String, WidgetRenderer> widgetRenderers = new HashMap<>();
+    private String activeTextFieldId = null;
     private String activeModalId = null;
     private String activeDropdownId = null;
     private boolean forceSchemaErrorView = false;
@@ -186,7 +227,13 @@ public class SchemaScreen extends Screen {
         widgetRenderers.put("input", (ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY) ->
             renderInput(ctx, w, panelX, panelW, panelPadding, y, h, colLabel));
         widgetRenderers.put("hint", (ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY) ->
-            renderHint(ctx, w, panelX, panelPadding, y));
+            renderHint(ctx, w, panelX, panelW, panelPadding, y));
+        widgetRenderers.put("search_box", (ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY) ->
+            renderSearchBox(ctx, w, panelX, panelW, panelPadding, y, h, mouseX, mouseY));
+        widgetRenderers.put("filter_chips", (ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY) ->
+            renderFilterChips(ctx, w, panelX, panelW, panelPadding, y, h, mouseX, mouseY));
+        widgetRenderers.put("multi_select_dropdown", (ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY) ->
+            renderMultiSelectDropdown(ctx, w, panelX, panelW, panelPadding, y, h, mouseX, mouseY, colLabel));
         widgetRenderers.put("text", (ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY) ->
             renderText(ctx, w, panelX, panelW, panelPadding, y));
         widgetRenderers.put("action_row", (ctx, w, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY) ->
@@ -281,24 +328,62 @@ public class SchemaScreen extends Screen {
             JsonObject w = widgets.get(i).getAsJsonObject();
             String type = strVal(w, "type", "");
             if ("modal".equals(type)) continue;
-            if ("history".equals(type) && boolVal(w, "flex", false)) {
+            String rowGroup = strVal(w, "rowGroup", "");
+            if (!rowGroup.isBlank()) {
+                int maxH = 0;
+                int j = i;
+                for (; j < widgets.size(); j++) {
+                    JsonObject gw = widgets.get(j).getAsJsonObject();
+                    if ("modal".equals(strVal(gw, "type", ""))) continue;
+                    if (!rowGroup.equals(strVal(gw, "rowGroup", ""))) break;
+                    String gType = strVal(gw, "type", "");
+                    if (boolVal(gw, "flex", false)) {
+                        flexCount++;
+                    } else {
+                        maxH = Math.max(maxH, widgetHeight(gw, gType, panelW, panelPadding));
+                    }
+                }
+                fixedHeight += maxH;
+                i = Math.max(i, j - 1);
+                continue;
+            }
+            if (boolVal(w, "flex", false)) {
                 flexCount++;
                 continue;
             }
             fixedHeight += widgetHeight(w, type, panelW, panelPadding);
         }
-        int remaining = Math.max(120, height - titleHeight - fixedHeight - panelPadding);
+        int remaining = Math.max(0, height - titleHeight - fixedHeight - panelPadding);
         int flexHeight = flexCount == 0 ? 0 : remaining / flexCount;
 
+        List<LayoutRow> rows = new ArrayList<>();
         for (int i = 0; i < widgets.size(); i++) {
             JsonObject w = widgets.get(i).getAsJsonObject();
             String type = strVal(w, "type", "");
             if ("modal".equals(type)) continue;
-            int wh = ("history".equals(type) && boolVal(w, "flex", false)) ? flexHeight : widgetHeight(w, type, panelW, panelPadding);
-            renderWidgetByType(ctx, w, type, panelX, panelW, panelPadding, titleHeight, colLabel, y, wh, mouseX, mouseY);
-
+            String rowGroup = strVal(w, "rowGroup", "");
+            if (!rowGroup.isBlank()) {
+                int rowY = y;
+                int rowH = 0;
+                int j = i;
+                for (; j < widgets.size(); j++) {
+                    JsonObject gw = widgets.get(j).getAsJsonObject();
+                    String gType = strVal(gw, "type", "");
+                    if ("modal".equals(gType)) continue;
+                    if (!rowGroup.equals(strVal(gw, "rowGroup", ""))) break;
+                    int gH = boolVal(gw, "flex", false) ? flexHeight : widgetHeight(gw, gType, panelW, panelPadding);
+                    rowH = Math.max(rowH, gH);
+                    rows.add(new LayoutRow(j, widgetRenderZ(gType, gw), gw, gType, rowY, gH));
+                }
+                y += rowH;
+                i = Math.max(i, j - 1);
+                continue;
+            }
+            int wh = boolVal(w, "flex", false) ? flexHeight : widgetHeight(w, type, panelW, panelPadding);
+            rows.add(new LayoutRow(i, widgetRenderZ(type, w), w, type, y, wh));
             y += wh;
         }
+        renderRowsByZ(ctx, rows, panelX, panelW, panelPadding, titleHeight, colLabel, mouseX, mouseY);
 
         for (int i = 0; i < widgets.size(); i++) {
             JsonObject w = widgets.get(i).getAsJsonObject();
@@ -746,7 +831,27 @@ public class SchemaScreen extends Screen {
             if (!widgets.get(i).isJsonObject()) continue;
             JsonObject w = widgets.get(i).getAsJsonObject();
             String type = strVal(w, "type", "");
-            if ("history".equals(type) && boolVal(w, "flex", false)) {
+            String rowGroup = strVal(w, "rowGroup", "");
+            if (!rowGroup.isBlank()) {
+                int maxH = 0;
+                int j = i;
+                for (; j < widgets.size(); j++) {
+                    if (!widgets.get(j).isJsonObject()) continue;
+                    JsonObject gw = widgets.get(j).getAsJsonObject();
+                    String gType = strVal(gw, "type", "");
+                    if ("modal".equals(gType)) continue;
+                    if (!rowGroup.equals(strVal(gw, "rowGroup", ""))) break;
+                    if (boolVal(gw, "flex", false)) {
+                        flexCount++;
+                    } else {
+                        maxH = Math.max(maxH, widgetHeight(gw, gType, panelW, panelPadding));
+                    }
+                }
+                fixedHeight += maxH;
+                i = Math.max(i, j - 1);
+                continue;
+            }
+            if (boolVal(w, "flex", false)) {
                 flexCount++;
                 continue;
             }
@@ -757,16 +862,66 @@ public class SchemaScreen extends Screen {
 
         int y = regionY;
         int regionTitleHeight = intVal(UiSchemaStore.getSchema(), "titleHeight", 14);
+        List<LayoutRow> rows = new ArrayList<>();
         for (int i = 0; i < widgets.size(); i++) {
             if (!widgets.get(i).isJsonObject()) continue;
             JsonObject w = widgets.get(i).getAsJsonObject();
             String type = strVal(w, "type", "");
             if ("modal".equals(type)) continue;
-            int wh = ("history".equals(type) && boolVal(w, "flex", false)) ? flexHeight : widgetHeight(w, type, panelW, panelPadding);
-            if (y + wh > regionY + regionH) break;
-            renderWidgetByType(ctx, w, type, panelX, panelW, panelPadding, regionTitleHeight, colLabel, y, wh, mouseX, mouseY);
+            String rowGroup = strVal(w, "rowGroup", "");
+            if (!rowGroup.isBlank()) {
+                int rowY = y;
+                int rowH = 0;
+                int j = i;
+                List<LayoutRow> groupRows = new ArrayList<>();
+                for (; j < widgets.size(); j++) {
+                    if (!widgets.get(j).isJsonObject()) continue;
+                    JsonObject gw = widgets.get(j).getAsJsonObject();
+                    String gType = strVal(gw, "type", "");
+                    if ("modal".equals(gType)) continue;
+                    if (!rowGroup.equals(strVal(gw, "rowGroup", ""))) break;
+                    int gH = boolVal(gw, "flex", false) ? flexHeight : widgetHeight(gw, gType, panelW, panelPadding);
+                    rowH = Math.max(rowH, gH);
+                    groupRows.add(new LayoutRow(j, widgetRenderZ(gType, gw), gw, gType, rowY, gH));
+                }
+                if (y >= regionY + regionH) break;
+                if (y + rowH > regionY) {
+                    rows.addAll(groupRows);
+                }
+                y += rowH;
+                i = Math.max(i, j - 1);
+                continue;
+            }
+            int wh = boolVal(w, "flex", false) ? flexHeight : widgetHeight(w, type, panelW, panelPadding);
+            if (y >= regionY + regionH) break;
+            if (y + wh <= regionY) {
+                y += wh;
+                continue;
+            }
+            rows.add(new LayoutRow(i, widgetRenderZ(type, w), w, type, y, wh));
             y += wh;
         }
+        renderRowsByZ(ctx, rows, panelX, panelW, panelPadding, regionTitleHeight, colLabel, mouseX, mouseY);
+    }
+
+    private void renderRowsByZ(DrawContext ctx, List<LayoutRow> rows,
+                               int panelX, int panelW, int panelPadding, int titleHeight, int colLabel,
+                               int mouseX, int mouseY) {
+        rows.stream()
+                .sorted(Comparator.comparingInt(LayoutRow::z).thenComparingInt(LayoutRow::index))
+                .forEach(row -> renderWidgetByType(ctx, row.widget(), row.type(),
+                        panelX, panelW, panelPadding, titleHeight, colLabel,
+                        row.y(), row.h(), mouseX, mouseY));
+    }
+
+    private int widgetRenderZ(String type, JsonObject widget) {
+        if (widget.has("z")) {
+            return intVal(widget, "z", Z_BASE);
+        }
+        return switch (type) {
+            case "dropdown", "multi_select_dropdown" -> Z_DROPDOWN;
+            default -> Z_BASE;
+        };
     }
 
     private void renderPanel(DrawContext ctx, JsonObject widget, int panelX, int panelW, int panelPadding,
@@ -811,16 +966,68 @@ public class SchemaScreen extends Screen {
         ctx.fill(panelX + panelPadding, y, panelX + panelW - panelPadding, y + headerH,
                 hover ? headerHoverBg : headerBg);
 
+        int headerLeft = panelX + panelPadding;
+        int headerRight = panelX + panelW - panelPadding;
+
+        // Tag pills on the right side (if present)
+        int tagsStartX = headerRight;
+        JsonArray tags = arr(widget, "tags");
+        if (!tags.isEmpty()) {
+            int chipGap = intVal(widget, "tagChipGap", 2);
+            int chipPadX = intVal(widget, "tagChipPaddingX", 4);
+            int chipH = intVal(widget, "tagChipHeight", Math.max(9, headerH - 8));
+            int minLabelW = intVal(widget, "minLabelWidth", 170);
+            int maxTagArea = Math.max(0, (headerRight - headerLeft) - minLabelW - 8);
+            int cx = headerRight;
+            int usedTagArea = 0;
+            int hiddenCount = 0;
+            for (int i = tags.size() - 1; i >= 0; i--) {
+                if (!tags.get(i).isJsonPrimitive()) continue;
+                String tag = tags.get(i).getAsString();
+                if (tag == null || tag.isBlank()) continue;
+                int chipW = textRenderer.getWidth(tag) + chipPadX * 2;
+                int neededArea = chipW + (usedTagArea == 0 ? 0 : chipGap);
+                if (usedTagArea + neededArea > maxTagArea) {
+                    hiddenCount++;
+                    continue;
+                }
+                usedTagArea += neededArea;
+                cx -= chipW;
+                int chipY = y + (headerH - chipH) / 2;
+                int[] style = tagStyle(tag);
+                drawOutlinedBox(ctx, cx, chipY, cx + chipW, chipY + chipH, style[0], style[1], 1);
+                ctx.drawText(textRenderer, tag, cx + chipPadX, chipY + (chipH - 8) / 2, style[2], false);
+                cx -= chipGap;
+            }
+
+            if (hiddenCount > 0) {
+                String more = "+" + hiddenCount + " more";
+                int moreW = textRenderer.getWidth(more) + chipPadX * 2;
+                if (usedTagArea + moreW + (usedTagArea == 0 ? 0 : chipGap) <= maxTagArea) {
+                    cx -= moreW;
+                    int chipY = y + (headerH - chipH) / 2;
+                    int[] style = tagStyle("default");
+                    drawOutlinedBox(ctx, cx, chipY, cx + moreW, chipY + chipH, style[0], style[1], 1);
+                    ctx.drawText(textRenderer, more, cx + chipPadX, chipY + (chipH - 8) / 2, style[2], false);
+                    cx -= chipGap;
+                }
+            }
+
+            tagsStartX = Math.max(headerLeft + 30, cx + chipGap);
+        }
+
         // Triangle indicator + label
         String arrow = open ? "▼ " : "▶ ";
-        ctx.drawText(textRenderer, arrow + label, panelX + panelPadding + 4, y + (headerH - 8) / 2, headerColor, false);
+        int labelX = headerLeft + 4;
+        int labelMaxW = Math.max(20, tagsStartX - labelX - 4);
+        ctx.drawText(textRenderer, truncate(arrow + label, labelMaxW), labelX, y + (headerH - 8) / 2, headerColor, false);
 
         // Click target for toggle
         JsonObject toggleAction = new JsonObject();
         toggleAction.addProperty("type", "toggle_collapsible");
         toggleAction.addProperty("id", id);
         toggleAction.addProperty("defaultOpen", defOpen);
-        addClickTarget(panelX + panelPadding, y, panelW - panelPadding * 2, headerH, toggleAction, null, Z_BASE + 1);
+        addClickTarget(headerLeft, y, panelW - panelPadding * 2, headerH, toggleAction, null, Z_BASE + 1);
 
         // Render children if open
         if (open) {
@@ -838,9 +1045,9 @@ public class SchemaScreen extends Screen {
         String id = strVal(widget, "id", "scroll_panel");
         int scrollbarW = intVal(widget, "scrollbarWidth", 3);
         int innerPad = intVal(widget, "padding", 0);
+        JsonArray children = filterScrollChildren(widget);
 
         // Compute total children height
-        JsonArray children = arr(widget, "widgets");
         int totalH = innerPad * 2;
         for (int ci = 0; ci < children.size(); ci++) {
             if (!children.get(ci).isJsonObject()) continue;
@@ -856,11 +1063,22 @@ public class SchemaScreen extends Screen {
         int bg = colorVal(widget, "background", 0);
         if (bg != 0) ctx.fill(panelX + panelPadding, y, panelX + panelW - panelPadding, y + h, bg);
 
+        if (children.isEmpty()) {
+            String emptyText = strVal(widget, "emptyText", "No results");
+            int emptyColor = colorVal(widget, "emptyColor", 0xFF7482A3);
+            ctx.drawText(textRenderer, emptyText, panelX + panelPadding + 4, y + 4, emptyColor, false);
+            scrollRegions.add(new ScrollRegion(panelX + panelPadding, y, panelW - panelPadding * 2, h, id));
+            return;
+        }
+
         // Clip content to this region
         ctx.enableScissor(panelX + panelPadding, y, panelX + panelW - panelPadding - scrollbarW - 1, y + h);
-        renderWidgetsInRegion(ctx, children, panelX, panelW - scrollbarW - 1, panelPadding + innerPad,
-                y - scroll + innerPad, h + scroll - innerPad, mouseX, mouseY, colLabel);
-        ctx.disableScissor();
+        try {
+            renderWidgetsInRegion(ctx, children, panelX, panelW - scrollbarW - 1, panelPadding + innerPad,
+                    y - scroll + innerPad, h + scroll - innerPad, mouseX, mouseY, colLabel);
+        } finally {
+            ctx.disableScissor();
+        }
 
         // Scrollbar
         if (maxScroll > 0) {
@@ -1006,11 +1224,223 @@ public class SchemaScreen extends Screen {
         inputBottom = y + h;
     }
 
-    private void renderHint(DrawContext ctx, JsonObject widget, int panelX, int panelPadding, int y) {
+    private void renderHint(DrawContext ctx, JsonObject widget, int panelX, int panelW, int panelPadding, int y) {
         String text = strVal(widget, "text", "");
         int color = colorVal(widget, "color", 0xFF777788);
         if (!text.isEmpty()) {
-            ctx.drawText(textRenderer, text, panelX + panelPadding, y + 2, color, false);
+            int maxW = Math.max(40, panelW - panelPadding * 2);
+            if (boolVal(widget, "wrap", false)) {
+                int lineHeight = Math.max(1, intVal(widget, "lineHeight", 10));
+                List<OrderedText> lines = textRenderer.wrapLines(parseLegacy(text), maxW);
+                int ty = y + 2;
+                for (OrderedText line : lines) {
+                    ctx.drawText(textRenderer, line, panelX + panelPadding, ty, color, false);
+                    ty += lineHeight;
+                }
+            } else {
+                ctx.drawText(textRenderer, text, panelX + panelPadding, y + 2, color, false);
+            }
+        }
+    }
+
+    private void renderSearchBox(DrawContext ctx, JsonObject widget, int panelX, int panelW, int panelPadding,
+                                 int y, int h, int mouseX, int mouseY) {
+        String id = strVal(widget, "id", "search");
+        String value = textFieldValue(id);
+        int cursor = Math.min(textFieldCursor.getOrDefault(id, value.length()), value.length());
+        textFieldCursor.put(id, cursor);
+
+        int x = panelX + panelPadding;
+        int w = panelW - panelPadding * 2;
+        boolean focused = id.equals(activeTextFieldId);
+        boolean hover = inBox(mouseX, mouseY, x, y, w, h);
+
+        int bg = colorVal(widget, focused ? "focusBackground" : "background", focused ? 0xFF121A2E : 0xFF101422);
+        int outline = colorVal(widget, focused ? "focusOutline" : "outline", focused ? 0xFF6CA4D4 : 0x664A6A94);
+        int textColor = colorVal(widget, "textColor", 0xFFE8EEF7);
+        int placeholderColor = colorVal(widget, "placeholderColor", 0xFF7C8AA8);
+        int iconColor = colorVal(widget, "iconColor", 0xFF86A8D1);
+        int clearColor = colorVal(widget, "clearColor", 0xFF9BB3D4);
+
+        drawOutlinedBox(ctx, x, y, x + w, y + h, bg, outline, 1);
+        String prefix = strVal(widget, "prefix", "⌕");
+        int prefixW = prefix.isEmpty() ? 0 : textRenderer.getWidth(prefix + " ");
+        if (!prefix.isEmpty()) {
+            ctx.drawText(textRenderer, prefix, x + 5, y + (h - 8) / 2, iconColor, false);
+        }
+
+        int textX = x + 5 + prefixW;
+        int textY = y + (h - 8) / 2;
+        int clearW = value.isEmpty() ? 0 : textRenderer.getWidth("[x]") + 8;
+        int maxTextW = Math.max(30, w - (textX - x) - clearW - 6);
+
+        if (value.isEmpty()) {
+            String placeholder = strVal(widget, "placeholder", "Search...");
+            ctx.drawText(textRenderer, truncate(placeholder, maxTextW), textX, textY, placeholderColor, false);
+        } else {
+            String shown = trimToRight(value, maxTextW);
+            ctx.drawText(textRenderer, shown, textX, textY, textColor, false);
+        }
+
+        JsonObject focusAction = action("set_text_focus");
+        focusAction.addProperty("id", id);
+        addClickTarget(x, y, w, h, focusAction, null, Z_BASE + 1);
+
+        if (!value.isEmpty()) {
+            int cx = x + w - clearW + 3;
+            int cy = y + (h - 8) / 2;
+            boolean clearHover = inBox(mouseX, mouseY, cx - 3, y + 1, clearW - 2, h - 2);
+            ctx.drawText(textRenderer, "[x]", cx, cy, clearHover ? 0xFFFFFFFF : clearColor, false);
+
+            JsonObject clearAction = action("clear_text_state");
+            clearAction.addProperty("id", id);
+            addClickTarget(cx - 3, y + 1, clearW - 2, h - 2, clearAction, null, Z_BASE + 2);
+        }
+
+        if (focused && (System.currentTimeMillis() / 500) % 2 == 0) {
+            String before = value.substring(0, cursor);
+            String shownBefore = trimToRight(before, maxTextW);
+            int caretX = textX + textRenderer.getWidth(shownBefore);
+            ctx.fill(caretX, y + 3, caretX + 1, y + h - 3, textColor);
+        }
+    }
+
+    private void renderFilterChips(DrawContext ctx, JsonObject widget, int panelX, int panelW, int panelPadding,
+                                   int y, int h, int mouseX, int mouseY) {
+        String stateId = strVal(widget, "stateId", "");
+        JsonArray tokens = arr(widget, "tokens");
+        if (tokens.isEmpty()) return;
+
+        int chipH = intVal(widget, "chipHeight", 14);
+        int gap = intVal(widget, "chipGap", 4);
+        int padX = intVal(widget, "chipPaddingX", 6);
+        int bg = colorVal(widget, "background", 0xFF0B0F1A);
+        int outline = colorVal(widget, "outline", 0x55354A66);
+        int activeBg = colorVal(widget, "activeBackground", 0xFF1E3958);
+        int activeOutline = colorVal(widget, "activeOutline", 0xFF6CA4D4);
+        int textColor = colorVal(widget, "textColor", 0xFFBFD2EA);
+        int activeTextColor = colorVal(widget, "activeTextColor", 0xFFFFFFFF);
+
+        int x = panelX + panelPadding;
+        int right = panelX + panelW - panelPadding;
+        int cx = x;
+        int cy = y;
+
+        for (int i = 0; i < tokens.size(); i++) {
+            if (!tokens.get(i).isJsonObject()) continue;
+            JsonObject tokenObj = tokens.get(i).getAsJsonObject();
+            String label = strVal(tokenObj, "label", "");
+            String token = strVal(tokenObj, "token", label);
+            if (label.isBlank() || token.isBlank()) continue;
+
+            int chipW = textRenderer.getWidth(label) + padX * 2;
+            if (cx != x && cx + chipW > right) {
+                cx = x;
+                cy += chipH + gap;
+            }
+
+            boolean active = hasQueryToken(stateId, token);
+            boolean hover = inBox(mouseX, mouseY, cx, cy, chipW, chipH);
+            drawOutlinedBox(ctx, cx, cy, cx + chipW, cy + chipH,
+                    active ? activeBg : bg,
+                    active || hover ? activeOutline : outline,
+                    1);
+            ctx.drawText(textRenderer, label, cx + padX, cy + (chipH - 8) / 2,
+                    active ? activeTextColor : textColor, false);
+
+            JsonObject toggle = action("toggle_query_token");
+            toggle.addProperty("stateId", stateId);
+            toggle.addProperty("token", token);
+            addClickTarget(cx, cy, chipW, chipH, toggle, null, Z_BASE + 1);
+
+            cx += chipW + gap;
+        }
+    }
+
+    private void renderMultiSelectDropdown(DrawContext ctx, JsonObject widget, int panelX, int panelW, int panelPadding,
+                                           int y, int h, int mouseX, int mouseY, int colLabel) {
+        String id = strVal(widget, "id", "multi_select");
+        String stateId = strVal(widget, "stateId", id);
+        int optionH = intVal(widget, "optionHeight", 14);
+        int maxVisible = Math.max(1, intVal(widget, "maxVisible", 8));
+
+        int bg = colorVal(widget, "buttonBg", 0xFF142033);
+        int hoverBg = colorVal(widget, "buttonHover", 0xFF1E3A5F);
+        int outline = colorVal(widget, "buttonOutline", 0x553A5A80);
+        int hoverOutline = colorVal(widget, "buttonHoverOutline", 0xFF4A86C8);
+        int outlineWidth = intVal(widget, "outlineWidth", 1);
+        int textColor = colorVal(widget, "color", colLabel);
+        int optionBg = colorVal(widget, "optionBg", 0xFF101828);
+        int optionHover = colorVal(widget, "optionHover", 0xFF1C2F4A);
+        int optionActive = colorVal(widget, "optionActive", 0xFF21456A);
+        int optionOutline = colorVal(widget, "optionOutline", 0x663A5A80);
+
+        JsonArray options = arr(widget, "options");
+        double widthPct = doubleVal(widget, "widthPercent", 1.0);
+        widthPct = Math.max(0.10, Math.min(1.0, widthPct));
+        int contentW = panelW - panelPadding * 2;
+        int w = Math.max(40, (int) Math.round(contentW * widthPct));
+        String align = strVal(widget, "align", "left").toLowerCase(Locale.ROOT);
+        int x = switch (align) {
+            case "right" -> panelX + panelW - panelPadding - w;
+            case "center" -> panelX + panelPadding + Math.max(0, (contentW - w) / 2);
+            default -> panelX + panelPadding;
+        };
+        int selectedCount = 0;
+        for (int i = 0; i < options.size(); i++) {
+            if (!options.get(i).isJsonObject()) continue;
+            JsonObject opt = options.get(i).getAsJsonObject();
+            String token = strVal(opt, "token", strVal(opt, "label", ""));
+            if (!token.isBlank() && hasQueryToken(stateId, token)) selectedCount++;
+        }
+
+        boolean open = id.equals(activeDropdownId);
+        boolean hover = inBox(mouseX, mouseY, x, y, w, h);
+        drawOutlinedBox(ctx, x, y, x + w, y + h, hover ? hoverBg : bg,
+                hover ? hoverOutline : outline, outlineWidth);
+
+        String baseLabel = strVal(widget, "label", "Filter Tags");
+        String suffix = selectedCount == 0 ? "all" : selectedCount + " selected";
+        String header = baseLabel + ": " + suffix + (open ? " ▲" : " ▼");
+        ctx.drawText(textRenderer, truncate(header, Math.max(30, w - 12)), x + 6, y + (h - 8) / 2, textColor, false);
+
+        JsonObject toggle = action("toggle_dropdown");
+        toggle.addProperty("id", id);
+        addClickTarget(x, y, w, h, toggle, null, intVal(widget, "z", Z_DROPDOWN));
+
+        if (!open) return;
+
+        int visible = Math.min(options.size(), maxVisible);
+        int listH = visible * optionH;
+        int listY = y + h + 2;
+        if (listY + listH > height - 2) {
+            listY = Math.max(2, y - listH - 2);
+        }
+
+        drawOutlinedBox(ctx, x, listY, x + w, listY + listH,
+                colorVal(widget, "dropdownBg", 0xFF0C1220),
+                colorVal(widget, "dropdownOutline", 0xAA4A6A94),
+                1);
+
+        for (int i = 0; i < visible; i++) {
+            if (!options.get(i).isJsonObject()) continue;
+            JsonObject opt = options.get(i).getAsJsonObject();
+            String label = strVal(opt, "label", "Option");
+            String token = strVal(opt, "token", label);
+            int oy = listY + i * optionH;
+            boolean selected = hasQueryToken(stateId, token);
+            boolean optHover = inBox(mouseX, mouseY, x, oy, w, optionH);
+
+            int fill = selected ? optionActive : optHover ? optionHover : optionBg;
+            drawOutlinedBox(ctx, x, oy, x + w, oy + optionH, fill, optionOutline, 1);
+            String rowText = (selected ? "[x] " : "[ ] ") + label;
+            ctx.drawText(textRenderer, truncate(rowText, Math.max(24, w - 10)), x + 5, oy + (optionH - 8) / 2,
+                    selected ? 0xFFFFFFFF : textColor, false);
+
+            JsonObject action = action("toggle_query_token");
+            action.addProperty("stateId", stateId);
+            action.addProperty("token", token);
+            addClickTarget(x, oy, w, optionH, action, null, intVal(widget, "z", Z_DROPDOWN + 1));
         }
     }
 
@@ -1104,6 +1534,10 @@ public class SchemaScreen extends Screen {
             return true;
         }
 
+        if (activeTextFieldId != null) {
+            activeTextFieldId = null;
+        }
+
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
@@ -1121,6 +1555,16 @@ public class SchemaScreen extends Screen {
 
     @Override
     public boolean charTyped(char chr, int modifiers) {
+        if (activeTextFieldId != null) {
+            String id = activeTextFieldId;
+            String value = textFieldValue(id);
+            int cursorPos = Math.min(textFieldCursor.getOrDefault(id, value.length()), value.length());
+            String next = value.substring(0, cursorPos) + chr + value.substring(cursorPos);
+            setTextFieldValue(id, next);
+            textFieldCursor.put(id, cursorPos + 1);
+            return true;
+        }
+
         int max = inputMaxLength();
         if (inputText.length() >= max) return true;
         inputText = inputText.substring(0, cursor) + chr + inputText.substring(cursor);
@@ -1132,6 +1576,10 @@ public class SchemaScreen extends Screen {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         ScreenDef activeScreen = ScreenManager.getActiveScreen();
         String activePlugin = activeScreen != null ? activeScreen.plugin : defaultPlugin();
+
+        if (handleTextFieldKeyPress(keyCode, modifiers)) {
+            return true;
+        }
         
         if (PluginConfig.matches(activePlugin, "clear_history", keyCode, modifiers)) {
             clearHistoryViewAndServer(activePlugin);
@@ -1277,7 +1725,10 @@ public class SchemaScreen extends Screen {
                 yield q.options().size() * (buttonH + gap) + 4;
             }
             case "input" -> inputWidgetHeight(w, panelW, panelPadding);
-            case "hint" -> intVal(w, "height", 12);
+            case "hint" -> hintWidgetHeight(w, panelW, panelPadding);
+            case "search_box" -> intVal(w, "height", 18);
+            case "filter_chips" -> filterChipsHeight(w, panelW, panelPadding);
+            case "multi_select_dropdown" -> intVal(w, "height", 18);
             case "text" -> intVal(w, "height", 14);
             case "action_row" -> intVal(w, "height", 20);
             case "dropdown" -> {
@@ -1309,7 +1760,8 @@ public class SchemaScreen extends Screen {
                 boolean open = colId.isBlank() ? defOpen : collapsibleOpen.getOrDefault(colId, defOpen);
                 if (!open) yield headerH;
                 JsonArray children = arr(w, "widgets");
-                int total = headerH;
+                int pad = intVal(w, "padding", 2);
+                int total = headerH + (pad * 2);
                 for (int ci = 0; ci < children.size(); ci++) {
                     if (!children.get(ci).isJsonObject()) continue;
                     JsonObject child = children.get(ci).getAsJsonObject();
@@ -1338,6 +1790,251 @@ public class SchemaScreen extends Screen {
         int visibleRows = Math.min(rows, maxRowsByHeight);
 
         return Math.max(lineHeight + 10, Math.min(maxHeight, visibleRows * lineHeight + 10));
+    }
+
+    private int hintWidgetHeight(JsonObject w, int panelW, int panelPadding) {
+        if (!boolVal(w, "wrap", false)) {
+            return intVal(w, "height", 12);
+        }
+        String text = strVal(w, "text", "");
+        if (text.isEmpty()) {
+            return intVal(w, "height", 12);
+        }
+        int maxW = Math.max(40, panelW - panelPadding * 2);
+        int lineHeight = Math.max(1, intVal(w, "lineHeight", 10));
+        List<OrderedText> lines = textRenderer.wrapLines(parseLegacy(text), maxW);
+        int rows = Math.max(1, lines.size());
+        return rows * lineHeight + 4;
+    }
+
+    private int filterChipsHeight(JsonObject widget, int panelW, int panelPadding) {
+        JsonArray tokens = arr(widget, "tokens");
+        if (tokens.isEmpty()) return intVal(widget, "height", 0);
+
+        int chipH = intVal(widget, "chipHeight", 14);
+        int gap = intVal(widget, "chipGap", 4);
+        int padX = intVal(widget, "chipPaddingX", 6);
+        int availableW = Math.max(40, panelW - panelPadding * 2);
+
+        int rowCount = 1;
+        int rowW = 0;
+        for (int i = 0; i < tokens.size(); i++) {
+            if (!tokens.get(i).isJsonObject()) continue;
+            JsonObject tok = tokens.get(i).getAsJsonObject();
+            String label = strVal(tok, "label", "");
+            if (label.isBlank()) continue;
+            int chipW = textRenderer.getWidth(label) + padX * 2;
+            int needed = rowW == 0 ? chipW : rowW + gap + chipW;
+            if (needed > availableW && rowW > 0) {
+                rowCount++;
+                rowW = chipW;
+            } else {
+                rowW = needed;
+            }
+        }
+
+        return rowCount * chipH + Math.max(0, rowCount - 1) * gap;
+    }
+
+    private JsonArray filterScrollChildren(JsonObject widget) {
+        JsonArray source = arr(widget, "widgets");
+        String searchState = strVal(widget, "searchState", "");
+        FilterState state = searchState.isBlank() ? null : filterState(searchState);
+        if (state == null || (state.textQuery.isBlank() && state.selectedTags.isEmpty() && state.selectedItems.isEmpty())) {
+            return source;
+        }
+
+        List<String> terms = new ArrayList<>();
+        if (state != null && !state.textQuery.isBlank()) {
+            for (String token : state.textQuery.split("\\s+")) {
+                String t = token.trim().toLowerCase(Locale.ROOT);
+                if (!t.isEmpty()) terms.add(t);
+            }
+        }
+
+        List<JsonObject> matched = new ArrayList<>();
+        for (int i = 0; i < source.size(); i++) {
+            if (!source.get(i).isJsonObject()) continue;
+            JsonObject child = source.get(i).getAsJsonObject();
+            String type = strVal(child, "type", "");
+            if ("spacer".equals(type)) continue;
+            if (matchesSearch(child, terms, state)) matched.add(child);
+        }
+
+        JsonArray filtered = new JsonArray();
+        for (int i = 0; i < matched.size(); i++) {
+            if (i > 0) {
+                JsonObject spacer = new JsonObject();
+                spacer.addProperty("type", "spacer");
+                spacer.addProperty("height", 2);
+                filtered.add(spacer);
+            }
+            filtered.add(matched.get(i));
+        }
+        return filtered;
+    }
+
+    private boolean matchesSearch(JsonObject widget, List<String> terms, FilterState state) {
+        String fallback = strVal(widget, "label", "");
+        JsonObject catalog = obj(widget, "catalog");
+        JsonObject facets = obj(catalog, "facets");
+        String searchText = strVal(catalog, "searchText", fallback).toLowerCase(Locale.ROOT);
+        Set<String> tags = facetValues(facets, "tags");
+        Set<String> items = facetValues(facets, "items");
+
+        for (String term : terms) {
+            if (!searchText.contains(term)) {
+                return false;
+            }
+        }
+
+        if (state != null) {
+            if (!state.selectedTags.isEmpty() && !tags.containsAll(state.selectedTags)) return false;
+            if (!state.selectedItems.isEmpty() && !items.containsAll(state.selectedItems)) return false;
+        }
+        return true;
+    }
+
+    private boolean hasQueryToken(String stateId, String token) {
+        if (stateId == null || stateId.isBlank() || token == null || token.isBlank()) return false;
+        String target = token.toLowerCase(Locale.ROOT).trim();
+        FilterState state = filterState(stateId);
+        if (target.startsWith("tag:")) return state.selectedTags.contains(target.substring(4));
+        if (target.startsWith("item:")) return state.selectedItems.contains(target.substring(5));
+        return false;
+    }
+
+    private boolean handleTextFieldKeyPress(int keyCode, int modifiers) {
+        if (activeTextFieldId == null) return false;
+
+        String id = activeTextFieldId;
+        String value = textFieldValue(id);
+        int cursorPos = Math.min(textFieldCursor.getOrDefault(id, value.length()), value.length());
+
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            activeTextFieldId = null;
+            return true;
+        }
+        if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+            return true;
+        }
+        if ((modifiers & GLFW.GLFW_MOD_CONTROL) != 0 && keyCode == GLFW.GLFW_KEY_V) {
+            String clip = client.keyboard.getClipboard();
+            if (clip != null && !clip.isEmpty()) {
+                String insert = clip.replace("\r\n", " ").replace('\r', ' ').replace('\n', ' ');
+                String next = value.substring(0, cursorPos) + insert + value.substring(cursorPos);
+                setTextFieldValue(id, next);
+                textFieldCursor.put(id, cursorPos + insert.length());
+            }
+            return true;
+        }
+        if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
+            if (cursorPos > 0) {
+                String next = value.substring(0, cursorPos - 1) + value.substring(cursorPos);
+                setTextFieldValue(id, next);
+                textFieldCursor.put(id, cursorPos - 1);
+            }
+            return true;
+        }
+        if (keyCode == GLFW.GLFW_KEY_DELETE) {
+            if (cursorPos < value.length()) {
+                String next = value.substring(0, cursorPos) + value.substring(cursorPos + 1);
+                setTextFieldValue(id, next);
+                textFieldCursor.put(id, cursorPos);
+            }
+            return true;
+        }
+        if (keyCode == GLFW.GLFW_KEY_LEFT) {
+            textFieldCursor.put(id, Math.max(0, cursorPos - 1));
+            return true;
+        }
+        if (keyCode == GLFW.GLFW_KEY_RIGHT) {
+            textFieldCursor.put(id, Math.min(value.length(), cursorPos + 1));
+            return true;
+        }
+        if (keyCode == GLFW.GLFW_KEY_HOME) {
+            textFieldCursor.put(id, 0);
+            return true;
+        }
+        if (keyCode == GLFW.GLFW_KEY_END) {
+            textFieldCursor.put(id, value.length());
+            return true;
+        }
+
+        return false;
+    }
+
+    private FilterState filterState(String stateId) {
+        return filterStates.computeIfAbsent(stateId, ignored -> new FilterState());
+    }
+
+    private String textFieldValue(String id) {
+        if (filterStates.containsKey(id) || id.toLowerCase(Locale.ROOT).contains("search")) {
+            return filterState(id).textQuery;
+        }
+        return textFieldValues.getOrDefault(id, "");
+    }
+
+    private void setTextFieldValue(String id, String value) {
+        if (filterStates.containsKey(id) || id.toLowerCase(Locale.ROOT).contains("search")) {
+            filterState(id).textQuery = value;
+            return;
+        }
+        textFieldValues.put(id, value);
+    }
+
+    private void toggleFacetToken(String stateId, String token) {
+        FilterState state = filterState(stateId);
+        if (token.startsWith("tag:")) {
+            toggleSetValue(state.selectedTags, token.substring(4));
+            return;
+        }
+        if (token.startsWith("item:")) {
+            toggleSetValue(state.selectedItems, token.substring(5));
+        }
+    }
+
+    private void toggleSetValue(Set<String> values, String entry) {
+        if (!values.remove(entry)) {
+            values.add(entry);
+        }
+    }
+
+    private Set<String> facetValues(JsonObject facets, String key) {
+        Set<String> values = new HashSet<>();
+        JsonArray entries = facets.has(key) && facets.get(key).isJsonArray() ? facets.getAsJsonArray(key) : new JsonArray();
+        for (int i = 0; i < entries.size(); i++) {
+            if (!entries.get(i).isJsonPrimitive()) continue;
+            values.add(entries.get(i).getAsString().toLowerCase(Locale.ROOT));
+        }
+        return values;
+    }
+
+    private String trimToRight(String text, int maxWidth) {
+        if (text == null || text.isEmpty()) return "";
+        if (textRenderer.getWidth(text) <= maxWidth) return text;
+
+        String out = text;
+        while (!out.isEmpty() && textRenderer.getWidth(out) > maxWidth) {
+            out = out.substring(1);
+        }
+        return out;
+    }
+
+    private int[] tagStyle(String tag) {
+        String t = tag == null ? "" : tag.toLowerCase(Locale.ROOT);
+        return switch (t) {
+            case "offense", "execute" -> new int[] {0xFF2A1620, 0xFFB8557A, 0xFFFFC6D8};
+            case "defense", "armor" -> new int[] {0xFF132033, 0xFF4F7FB9, 0xFFCAE3FF};
+            case "utility", "mobility", "tool" -> new int[] {0xFF152A20, 0xFF57A884, 0xFFCFFFE8};
+            case "reactive", "threshold" -> new int[] {0xFF2D2212, 0xFFD19A4A, 0xFFFFE4BF};
+            case "active", "instant" -> new int[] {0xFF261B31, 0xFF9369C8, 0xFFEDD9FF};
+            case "passive", "cooldown" -> new int[] {0xFF21242D, 0xFF8691A8, 0xFFE1E7F3};
+            case "ranged" -> new int[] {0xFF1D2433, 0xFF6E8FD0, 0xFFD9E6FF};
+            case "melee" -> new int[] {0xFF311D1D, 0xFFC37272, 0xFFFFDDDD};
+            case "sustain" -> new int[] {0xFF1E2A1B, 0xFF82B16B, 0xFFE4FFD9};
+            default -> new int[] {0xFF232733, 0xFF707B94, 0xFFD9DFEC};
+        };
     }
 
     private void runAction(JsonObject action, String optionValue) {
