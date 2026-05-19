@@ -49,7 +49,7 @@ public final class ModSettings {
         DEFAULTS.put("chat.thinking",       "false");
         
         // HUD display settings
-        DEFAULTS.put("hud.lines",           "1");
+        DEFAULTS.put("hud.lines",           "3");
         DEFAULTS.put("ui.thoughts_visible", "true");
         DEFAULTS.put("ui.color_scheme",     "terminal");
         
