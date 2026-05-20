@@ -13,7 +13,7 @@
       "com.example.vibecraftmod.VibeCraftMod"
     ]
   },
-  "mixins": [],
+  "mixins": ["vibecraftmod.mixins.json"],
   "depends": {
     "fabricloader": ">=0.16.0",
     "fabric-api": "*",

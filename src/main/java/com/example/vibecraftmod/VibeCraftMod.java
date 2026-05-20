@@ -14,6 +14,7 @@ public class VibeCraftMod implements ClientModInitializer {
     public void onInitializeClient() {
         ModSettings.init(FabricLoader.getInstance().getConfigDir());
         StandardWidgets.registerAll();
+        EntityHighlightManager.register();
         ModPackets.register();
         ModKeybindings.register();
         HudOverlay.register();

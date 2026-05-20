@@ -35,6 +35,7 @@ public class StandardWidgets {
         OverlayWidget.register("bar", config -> new BarOverlayWidget(config));
         OverlayWidget.register("icon", config -> new IconOverlayWidget(config));
         OverlayWidget.register("text", config -> new TextOverlayWidget(config));
+        OverlayWidget.register("hostile_indicator", config -> new HostileIndicatorWidget());
     }
 
     private static WidgetRenderer toolbarRenderer() {

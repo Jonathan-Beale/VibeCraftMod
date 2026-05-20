@@ -2183,17 +2183,25 @@ public class SchemaScreen extends Screen {
         if (text == null) return "";
         String tool = HudState.getCurrentTool();
         String detail = HudState.getCurrentToolDetail();
+        String provider = "";
+        try {
+            var schema = com.example.vibecraftmod.ui.UiSchemaStore.getSchema();
+            if (schema != null && schema.has("provider") && schema.get("provider").isJsonPrimitive()) {
+                provider = schema.get("provider").getAsString();
+            }
+        } catch (Exception ignored) {}
         return text
+                .replace("${provider}", provider)
                 .replace("${streaming}", String.valueOf(HudState.isStreaming()))
                 .replace("${historyCount}", String.valueOf(HudState.getLines().size()))
                 .replace("${tool}", tool == null ? "" : tool)
-            .replace("${detail}", detail == null ? "" : detail)
-            .replace("${shortcut.open_menu}", ClientConfig.getKeybindName("open_menu"))
-            .replace("${shortcut.toggle_thoughts}", ClientConfig.getKeybindName("toggle_thoughts"))
-            .replace("${shortcut.open_options}", ClientConfig.getKeybindName("open_options"))
-            .replace("${shortcut.open_help}", ClientConfig.getKeybindName("open_help"))
-            .replace("${shortcut.sync_history}", ClientConfig.getKeybindName("sync_history"))
-            .replace("${shortcut.clear_history}", ClientConfig.getKeybindName("clear_history"));
+                .replace("${detail}", detail == null ? "" : detail)
+                .replace("${shortcut.open_menu}", ClientConfig.getKeybindName("open_menu"))
+                .replace("${shortcut.toggle_thoughts}", ClientConfig.getKeybindName("toggle_thoughts"))
+                .replace("${shortcut.open_options}", ClientConfig.getKeybindName("open_options"))
+                .replace("${shortcut.open_help}", ClientConfig.getKeybindName("open_help"))
+                .replace("${shortcut.sync_history}", ClientConfig.getKeybindName("sync_history"))
+                .replace("${shortcut.clear_history}", ClientConfig.getKeybindName("clear_history"));
     }
 
     private String resolveActionText(String template, String optionValue) {

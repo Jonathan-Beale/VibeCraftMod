@@ -1,5 +1,6 @@
 package com.example.vibecraftmod.network;
 
+import com.example.vibecraftmod.EntityHighlightManager;
 import com.example.vibecraftmod.hud.HudState;
 import com.example.vibecraftmod.screen.SchemaScreen;
 import com.example.vibecraftmod.settings.ModSettings;
@@ -49,6 +50,7 @@ public class ModPackets {
             UiSchemaStore.clear();
             HudState.clear();
             ScreenManager.reset();
+            EntityHighlightManager.clear();
             historyBuffersByPlugin.clear();
             lastSequenceByPluginAndChannel.clear();
         });
@@ -213,6 +215,17 @@ public class ModPackets {
                 vals.put(entry.getKey(), entry.getValue().getAsString());
             }
             ModSettings.applyAllForPlugin(plugin, vals);
+        });
+        EVENT_HANDLERS.put("ef_highlight_entities", (obj, client) -> {
+            if (!obj.has("entities") || !obj.get("entities").isJsonArray()) {
+                EntityHighlightManager.update(java.util.List.of());
+                return;
+            }
+            java.util.List<Integer> ids = new java.util.ArrayList<>();
+            for (var el : obj.getAsJsonArray("entities")) {
+                try { ids.add(el.getAsInt()); } catch (Exception ignored) {}
+            }
+            EntityHighlightManager.update(ids);
         });
         // ...register more default handlers as needed...
     }
