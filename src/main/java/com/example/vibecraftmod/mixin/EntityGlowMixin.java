@@ -15,9 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(Entity.class)
 public abstract class EntityGlowMixin {
 
-    // isGlowingLocal() is what the render pipeline calls; isGlowing() delegates to it.
-    // Injecting here avoids the server metadata flag being the sole gate.
-    @Inject(method = "isGlowingLocal", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "isGlowing", at = @At("HEAD"), cancellable = true)
     private void ef_overrideGlow(CallbackInfoReturnable<Boolean> cir) {
         if (EntityHighlightManager.isHighlighted(((Entity)(Object)this).getId())) {
             cir.setReturnValue(true);

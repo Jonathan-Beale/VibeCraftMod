@@ -8,56 +8,52 @@ import net.minecraft.scoreboard.Scoreboard;
 import net.minecraft.scoreboard.Team;
 import net.minecraft.util.Formatting;
 
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
- * Manages per-player client-side entity glow highlights driven by ef_highlight_entities
- * server messages.
+ * Manages client-side entity glow highlights sent from the server.
  *
- * Glow visibility: injected via EntityGlowMixin into Entity.isGlowing().
- * Glow color:      applied via client-side scoreboard teams (one per color group).
- *
- * Supported colors: "red", "aqua" (more can be added via colorToFormatting).
+ * Glow visibility is driven by a Mixin into Entity.isGlowing() so server metadata
+ * packets cannot override it.  Color is applied via the client scoreboard so the
+ * highlight renders red without needing NMS on the server.
  */
 public final class EntityHighlightManager {
 
-    /** Map from entity network ID → team name ("red", "aqua", …). */
-    static final Map<Integer, String> highlighted = new HashMap<>();
+    private static final String TEAM_NAME = "ef_hostile";
 
-    /** UUID strings added to each team, for cleanup. */
-    private static final Map<String, Set<String>> teamEntries = new HashMap<>();
+    /** Entity network IDs that should glow. Read by EntityGlowMixin on every render call. */
+    static final Set<Integer> highlighted = new HashSet<>();
+
+    /** UUID strings currently in the red scoreboard team (for cleanup). */
+    private static final Set<String> teamEntries = new HashSet<>();
 
     private EntityHighlightManager() {}
 
     public static void register() {
         ClientEntityEvents.ENTITY_LOAD.register((entity, world) -> {
-            String color = highlighted.get(entity.getId());
-            if (color != null) addToTeam(entity, world.getScoreboard(), color);
+            if (!highlighted.contains(entity.getId())) return;
+            addToTeam(entity, world.getScoreboard());
         });
     }
 
     /** Called by the ef_highlight_entities event handler. */
-    public static void update(Map<String, List<Integer>> groups) {
+    public static void update(List<Integer> entityIds) {
         highlighted.clear();
-        for (var entry : groups.entrySet()) {
-            for (int id : entry.getValue()) highlighted.put(id, entry.getKey());
-        }
-        rebuildTeams();
+        highlighted.addAll(entityIds);
+        rebuildTeam();
     }
 
-    /** Called on disconnect. */
+    /** Called on disconnect to reset all state. */
     public static void clear() {
         highlighted.clear();
-        rebuildTeams();
+        rebuildTeam();
     }
 
-    /** Used by EntityGlowMixin — called on every entity render, must be fast. */
+    /** Used by EntityGlowMixin — must be fast (called on every entity render). */
     public static boolean isHighlighted(int entityId) {
-        return highlighted.containsKey(entityId);
+        return highlighted.contains(entityId);
     }
 
     /** Used by WorldRendererOutlineMixin to activate the outline pass. */
@@ -67,66 +63,45 @@ public final class EntityHighlightManager {
 
     // ---- Team management ----
 
-    private static void rebuildTeams() {
+    private static void rebuildTeam() {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.world == null) {
             teamEntries.clear();
             return;
         }
-        Scoreboard sb = client.world.getScoreboard();
+        ClientWorld world = client.world;
+        Scoreboard sb = world.getScoreboard();
 
-        // Remove all stale entries from every managed team.
-        for (var entry : teamEntries.entrySet()) {
-            Team team = sb.getTeam(teamName(entry.getKey()));
-            for (String uuid : entry.getValue()) {
-                sb.clearTeam(uuid);
-                if (team != null) {} // clearTeam already removes from team
-            }
+        for (String uuid : new HashSet<>(teamEntries)) {
+            sb.clearTeam(uuid);
         }
         teamEntries.clear();
 
         if (highlighted.isEmpty()) return;
 
-        // Re-add current set.
-        for (var entry : highlighted.entrySet()) {
-            int id = entry.getKey();
-            String color = entry.getValue();
-            Entity e = client.world.getEntityById(id);
-            if (e != null) addToTeam(e, sb, color);
+        Team team = ensureTeam(sb);
+        for (int id : highlighted) {
+            Entity e = world.getEntityById(id);
+            if (e != null) addToTeam(e, sb, team);
         }
     }
 
-    private static void addToTeam(Entity entity, Scoreboard sb, String color) {
-        Team team = ensureTeam(sb, color);
+    private static void addToTeam(Entity entity, Scoreboard sb) {
+        addToTeam(entity, sb, ensureTeam(sb));
+    }
+
+    private static void addToTeam(Entity entity, Scoreboard sb, Team team) {
         String uuidStr = entity.getUuid().toString();
-        // Remove from any existing team first — addScoreHolderToTeam throws if already in one.
-        sb.clearTeam(uuidStr);
-        teamEntries.computeIfAbsent(color, k -> new HashSet<>()).add(uuidStr);
-        sb.addScoreHolderToTeam(uuidStr, team);
+        if (teamEntries.add(uuidStr)) {
+            sb.addScoreHolderToTeam(uuidStr, team);
+        }
     }
 
-    private static Team ensureTeam(Scoreboard sb, String color) {
-        String name = teamName(color);
-        Team team = sb.getTeam(name);
+    private static Team ensureTeam(Scoreboard sb) {
+        Team team = sb.getTeam(TEAM_NAME);
         if (team != null) return team;
-        team = sb.addTeam(name);
-        team.setColor(colorToFormatting(color));
+        team = sb.addTeam(TEAM_NAME);
+        team.setColor(Formatting.RED);
         return team;
-    }
-
-    private static String teamName(String color) {
-        return "ef_" + color;
-    }
-
-    private static Formatting colorToFormatting(String color) {
-        return switch (color) {
-            case "red"    -> Formatting.RED;
-            case "aqua"   -> Formatting.AQUA;
-            case "blue"   -> Formatting.BLUE;
-            case "green"  -> Formatting.GREEN;
-            case "yellow" -> Formatting.YELLOW;
-            case "white"  -> Formatting.WHITE;
-            default       -> Formatting.RED;
-        };
     }
 }

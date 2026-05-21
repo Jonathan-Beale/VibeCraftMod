@@ -218,22 +218,13 @@ public class ModPackets {
             ModSettings.applyAllForPlugin(plugin, vals);
         });
         EVENT_HANDLERS.put("ef_highlight_entities", (obj, client) -> {
-            java.util.Map<String, java.util.List<Integer>> groups = new java.util.HashMap<>();
-            if (obj.has("groups") && obj.get("groups").isJsonArray()) {
-                for (var el : obj.getAsJsonArray("groups")) {
-                    if (!el.isJsonObject()) continue;
-                    JsonObject g = el.getAsJsonObject();
-                    String color = g.has("color") ? g.get("color").getAsString() : "red";
-                    java.util.List<Integer> ids = new java.util.ArrayList<>();
-                    if (g.has("entities") && g.get("entities").isJsonArray()) {
-                        for (var e : g.getAsJsonArray("entities")) {
-                            try { ids.add(e.getAsInt()); } catch (Exception ignored) {}
-                        }
-                    }
-                    groups.put(color, ids);
+            java.util.List<Integer> ids = new java.util.ArrayList<>();
+            if (obj.has("entities") && obj.get("entities").isJsonArray()) {
+                for (var el : obj.getAsJsonArray("entities")) {
+                    try { ids.add(el.getAsInt()); } catch (Exception ignored) {}
                 }
             }
-            EntityHighlightManager.update(groups);
+            EntityHighlightManager.update(ids);
         });
         // ...register more default handlers as needed...
     }
