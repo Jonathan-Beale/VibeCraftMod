@@ -115,15 +115,14 @@ public class HostileRadarOverlay {
             double worldDx = ePos.x - playerPos.x;
             double worldDz = ePos.z - playerPos.z;
 
-            // Rotate into player-forward-up frame.
-            // yawRad is clockwise from +Z (south), so forward = (sin(yaw), cos(yaw)) in world X/Z.
-            // We want: screen-up = player forward, screen-right = player right.
-            // mapX = dot(worldDelta, playerRight)   = -worldDx*cos(yaw) - worldDz*sin(yaw)
-            // mapY = -dot(worldDelta, playerForward) = -(worldDx*sin(yaw) + worldDz*cos(yaw)) negated for screen-up
+            // Rotate world offset into player-forward-up frame.
+            // forward = (-sin(yaw), cos(yaw)) in (X,Z); right = (cos(yaw), -sin(yaw)) in (X,Z)
+            // mapX = dot(delta, right)    = worldDx*cos - worldDz*sin  (positive = screen-right)
+            // mapY = dot(delta, forward)  = -worldDx*sin + worldDz*cos (positive = screen-up → negate for screen-Y)
             float sinYaw = (float) Math.sin(yawRad);
             float cosYaw = (float) Math.cos(yawRad);
-            float mapX = (float) (-worldDx * cosYaw + worldDz * sinYaw);
-            float mapY = (float) -(worldDx * sinYaw + worldDz * cosYaw);
+            float mapX = (float) (worldDx * cosYaw - worldDz * sinYaw);
+            float mapY = (float) (worldDx * sinYaw - worldDz * cosYaw);
 
             // Scale: MAX_RANGE world units → RADIUS screen pixels, clamp inside disc
             float scale = RADIUS / MAX_RANGE;
@@ -149,6 +148,7 @@ public class HostileRadarOverlay {
     }
 
     private static void drawDot(Matrix4f matrix, float x, float y, float r, int red, int green, int blue, int alpha) {
+        RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
         int segments = 12;
         var buf = Tessellator.getInstance().begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR);
         buf.vertex(matrix, x, y, 0).color(red, green, blue, alpha);

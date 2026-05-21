@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "vibecraftmod",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "name": "VibeCraft Mod",
   "description": "Client-side HUD overlay and input for VibeCraft AI assistant",
   "authors": [],
