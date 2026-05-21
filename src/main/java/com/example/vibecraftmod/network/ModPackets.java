@@ -217,13 +217,15 @@ public class ModPackets {
             ModSettings.applyAllForPlugin(plugin, vals);
         });
         EVENT_HANDLERS.put("ef_highlight_entities", (obj, client) -> {
-            java.util.List<Integer> ids = new java.util.ArrayList<>();
-            if (obj.has("entities") && obj.get("entities").isJsonArray()) {
-                for (var el : obj.getAsJsonArray("entities")) {
-                    try { ids.add(el.getAsInt()); } catch (Exception ignored) {}
-                }
-            }
-            EntityHighlightManager.update(ids);
+            java.util.List<Integer> hostile = new java.util.ArrayList<>();
+            java.util.List<Integer> neutral = new java.util.ArrayList<>();
+            if (obj.has("hostile") && obj.get("hostile").isJsonArray())
+                for (var el : obj.getAsJsonArray("hostile"))
+                    try { hostile.add(el.getAsInt()); } catch (Exception ignored) {}
+            if (obj.has("neutral") && obj.get("neutral").isJsonArray())
+                for (var el : obj.getAsJsonArray("neutral"))
+                    try { neutral.add(el.getAsInt()); } catch (Exception ignored) {}
+            EntityHighlightManager.update(hostile, neutral);
         });
         // ...register more default handlers as needed...
     }
