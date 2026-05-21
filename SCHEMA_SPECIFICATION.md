@@ -112,7 +112,8 @@ int panelW = Math.min(
 
 ## 4. Widget Types and Properties
 
-The client supports these widget types (registered in `SchemaScreen.registerDefaultWidgetRenderers()`):
+The client supports these widget types (registered in `SchemaScreen.registerDefaultWidgetRenderers()`).
+The list below covers all types that have an explicit renderer. Unknown types are silently skipped.
 
 ### 4.1 toolbar
 **Purpose:** Display toolbar with close, help, options buttons and status text
@@ -476,6 +477,8 @@ The client supports these widget types (registered in `SchemaScreen.registerDefa
 - Content height = `height - tabHeight - 3`
 - Tabs are auto-sized based on label width + 12px padding
 
+**Note:** In `StandardWidgets`, this type is registered as `"tabs"`. `SchemaScreen` also registers `"tab_container"`. Use `"tab_container"` in schema JSON for full rendering support.
+
 ---
 
 ### 4.11 divider
@@ -532,10 +535,142 @@ The client supports these widget types (registered in `SchemaScreen.registerDefa
 
 ---
 
-### 4.14 modal
-**Purpose:** Modal dialog overlay
+### 4.14 panel
+**Purpose:** Nested sub-panel that fills remaining vertical space (flex)
 
-**Render Method:** `renderModal()`
+**Render Method:** `renderPanel()`
+
+**Required Properties:**
+- `type`: `"panel"`
+
+**Special Behavior:**
+- Acts as a flex widget (takes remaining space), similar to `history` with `flex: true`
+- Can contain its own `widgets` array rendered within the panel bounds
+
+---
+
+### 4.15 collapsible
+**Purpose:** Collapsible section with a toggle header
+
+**Render Method:** `renderCollapsible()`
+
+**Required Properties:**
+- `type`: `"collapsible"`
+- `id`: string (state key)
+
+**Optional Properties:**
+
+| Property | Type | Default | Notes |
+|----------|------|---------|-------|
+| `id` | string | required | Identifies collapse state across renders |
+| `label` | string | `""` | Header label |
+| `defaultOpen` | boolean | false | Initial open state |
+| `widgets` | array | `[]` | Child widgets shown when open |
+
+**Special Behavior:**
+- Open/closed state tracked by `collapsibleOpen` map keyed by `id`
+- Toggle via `toggle_collapsible` internal action with matching `id`
+- Child widgets are only rendered and measured when open
+
+---
+
+### 4.16 scroll_panel
+**Purpose:** Scrollable container for a list of child widgets
+
+**Render Method:** `renderScrollPanel()`
+
+**Required Properties:**
+- `type`: `"scroll_panel"`
+
+**Optional Properties:**
+
+| Property | Type | Default | Notes |
+|----------|------|---------|-------|
+| `height` | integer | 120 | Visible height of the panel |
+| `id` | string | `"scroll"` | State key for scroll offset |
+| `widgets` | array | `[]` | Child widgets |
+| `scrollbarWidth` | integer | 3 | Scrollbar width |
+
+**Special Behavior:**
+- Scroll offset tracked by `scrollPanelOffsets` map keyed by `id`
+- Mouse wheel events inside the region adjust the offset
+- Children are clipped to the visible area
+
+---
+
+### 4.17 search_box
+**Purpose:** Text input for filtering content (query field)
+
+**Render Method:** `renderSearchBox()`
+
+**Required Properties:**
+- `type`: `"search_box"`
+
+**Optional Properties:**
+
+| Property | Type | Default | Notes |
+|----------|------|---------|-------|
+| `id` | string | `"search"` | State key for text and cursor |
+| `placeholder` | string | `"Search..."` | Placeholder text |
+| `height` | integer | 18 | Widget height |
+
+**Special Behavior:**
+- Text state stored in `textFieldValues` keyed by `id`
+- Supports `toggle_query_token` action to append/remove filter tokens
+- Paired with `filter_chips` and `multi_select_dropdown` for faceted search
+
+---
+
+### 4.18 filter_chips
+**Purpose:** Row of toggleable filter tag chips
+
+**Render Method:** `renderFilterChips()`
+
+**Required Properties:**
+- `type`: `"filter_chips"`
+
+**Optional Properties:**
+
+| Property | Type | Default | Notes |
+|----------|------|---------|-------|
+| `stateId` | string | `"search"` | FilterState key shared with search_box |
+| `tags` | array | `[]` | Array of tag strings to show as chips |
+| `height` | integer | 20 | Widget height |
+
+**Special Behavior:**
+- Selected tags are stored in `FilterState.selectedTags` keyed by `stateId`
+- Clicking a chip toggles its presence in the selected set
+
+---
+
+### 4.19 multi_select_dropdown
+**Purpose:** Dropdown for selecting multiple items from a list
+
+**Render Method:** `renderMultiSelectDropdown()`
+
+**Required Properties:**
+- `type`: `"multi_select_dropdown"`
+
+**Optional Properties:**
+
+| Property | Type | Default | Notes |
+|----------|------|---------|-------|
+| `stateId` | string | `"search"` | FilterState key shared with search_box |
+| `label` | string | `"Select"` | Button label when closed |
+| `options` | array | `[]` | Array of option strings |
+| `height` | integer | 18 | Button height |
+| `optionHeight` | integer | 16 | Height of each option row |
+
+**Special Behavior:**
+- Selected items stored in `FilterState.selectedItems`
+- Dropdown state tracked by `activeDropdownId`
+
+---
+
+### 4.20 modal
+**Purpose:** Modal dialog overlay rendered above all other widgets
+
+**Render Method:** `renderModal()` (called separately after normal widget pass)
 
 **Required Properties:**
 - `type`: `"modal"`
@@ -610,6 +745,10 @@ Internal actions are built-in and do NOT require server round-trips:
 | `close_modal` | — | Close active modal |
 | `toggle_dropdown` | `id` (required) | Toggle dropdown open/closed |
 | `set_tab` | `container` (required), `tabIndex` (required) | Switch active tab |
+| `toggle_collapsible` | `id` (required), `defaultOpen` (optional) | Toggle collapsible section open/closed |
+| `set_text_focus` | `id` (required) | Focus a text field by ID |
+| `clear_text_state` | `id` (required) | Clear a text field and focus it |
+| `toggle_query_token` | `stateId` (required), `token` (required) | Toggle a filter token in a search/filter state |
 | `clear_history` | — | Clear history on client + server |
 | `refresh_schema` / `request_history` | — | Request fresh schema from server |
 | `send_message` | `text` (optional) | Send text to server as user input |
@@ -776,13 +915,16 @@ Overlays are rendered as HUD elements in the game world (not in the modal UI):
 }
 ```
 
-**Overlay Types:**
-- `armor_slots` / `slots` → SlotOverlayWidget
-- `bar` → BarOverlayWidget
-- `icon` → IconOverlayWidget
-- `text` → TextOverlayWidget
+**Overlay Types (registered in StandardWidgets.registerAll()):**
+- `armor_slots` / `slots` → SlotOverlayWidget: draws an item from `ItemStack` binding data in a hotbar-style slot
+- `bar` → BarOverlayWidget: fills a rectangle based on a 0–1 or 0–100 numeric binding; reads `background`/`foreground` colors from config
+- `icon` → IconOverlayWidget: draws a text/character icon; uses binding data string if present, otherwise falls back to config `"icon"` field
+- `text` → TextOverlayWidget: draws a string from binding data or config `"text"` field
+- `hostile_indicator` → HostileIndicatorWidget: pulsing screen-edge directional arrow; binding must be `{"side":"left"|"right","timestamp":<epochMs>}`; fades after 3 seconds
 
-**Position Anchors:** `"top-left"`, `"top-center"`, `"top-right"`, `"center-left"`, etc.
+**Position:** `x` and `y` are absolute pixel coordinates in the current implementation.
+The `anchor` field in `OverlayDef` is parsed but not yet applied to offset calculations.
+Overlay widgets render only when the matching plugin's screen is active (or plugin is blank/null).
 
 ---
 
@@ -790,64 +932,91 @@ Overlays are rendered as HUD elements in the game world (not in the modal UI):
 
 ### 8.1 Server → Client (VibeCraftEventPayload)
 
-**JSON Format:**
-```json
-{
-  "json": "{ /* JSON content */ }",
-  "protocolVersion": 1
-}
-```
+Channel: `vibecraft:events`
 
-**Payload Contents:**
-- `schema_update`: New full schema
-- `schema_patch`: Partial schema update
-- Event types: `user_message`, `thinking`, `question`, `stream_start`, etc.
+The payload is raw UTF-8 JSON bytes. `PROTOCOL_VERSION` is a client-side constant (currently `1`); the client logs a warning if the server's reported version differs. Each message is a JSON object with a required `"type"` field.
+
+**Handled Event Types (ModPackets.EVENT_HANDLERS):**
+
+| Type | Key Fields | Effect |
+|------|-----------|--------|
+| `user_message` | `text`, `plugin` | Adds a user-colored line to HUD history |
+| `stream_start` | `plugin` | Marks streaming active, clears tool/question state |
+| `thinking` | `text` | Adds thought lines to HUD history |
+| `question` | `prompt`, `options`, `plugin` | Adds question + option lines; sets pending question |
+| `tool_call` | `tool`, `detail`, `plugin` | Sets current tool; adds collapsed tool line |
+| `claude_text` | `lines`, `plugin` | Adds AI response lines with markdown rendering |
+| `bash_output` | `lines`, `plugin` | Adds output-colored lines |
+| `stream_end` | — | Clears streaming state; shows completion toast |
+| `ui_schema` | `schema` (object) | Replaces/merges schema in UiSchemaStore; triggers reload |
+| `ui_schema_patch` | `patch` (object) | Deep-merges patch into current schema; triggers reload |
+| `binding_update` | `binding` (string), `value` | Updates a single key in OverlayDataBinding |
+| `binding_updates` | `values` (object) | Batch updates multiple keys in OverlayDataBinding |
+| `open_screen` | `screenId` | Opens SchemaScreen for the named screen; duplicate-open guard (500 ms) |
+| `close_screen` | — | Closes current screen |
+| `history_chunk` | `entries`, `done`, `plugin`, optional `seq` | Buffered history delivery; replays on `done: true` |
+| `history` | `entries`, `plugin`, optional `seq` | Replaces HUD history in one message |
+| `settings` | `values` (object), `plugin`, optional `seq` | Applies server-sent settings to ModSettings |
+| `ef_highlight_entities` | `hostile` (int array), `neutral` (int array) | Updates EntityHighlightManager with entity IDs to glow |
+
+**Important field names:**
+- `binding_update` uses field `"binding"` (not `"key"`) for the binding key name.
+- `binding_updates` uses field `"values"` (not `"updates"`) for the key-value map.
+
+**Sequence guards:** `history` and `settings` events may carry an optional `seq`/`sequence`/`revision`/`version` field. Out-of-order events (seq ≤ last seen for that plugin+channel) are silently dropped.
+
+**Multi-plugin schema:** `ui_schema` merges by plugin — existing screens from other plugins are preserved. Screens from the same plugin(s) as the incoming schema are replaced.
 
 ### 8.2 Client → Server (VibeCraftInputPayload)
 
-User input or action results are sent back to the server.
+Channel: `vibecraft:input`
 
-**Built-in Event Handlers:**
-- `user_message`: User input with text
-- `stream_start`: Server begins streaming response
-- `thinking`: Server sends thoughts
-- `question`: Server asks for user choice
-- Others: Custom handlers per plugin
+All messages are JSON with `type`, `plugin`, and `namespace` fields. Sent by `ModPackets` static helpers.
+
+| Method | Type field | Other fields |
+|--------|-----------|--------------|
+| `sendInput(text, plugin)` | `"message"` | `message` |
+| `requestHistory(plugin)` | `"request_history"` | — |
+| `sendSetSetting(plugin, key, value)` | `"set_setting"` | `key`, `value` |
+| `clearHistory(plugin)` | `"clear_history"` | — |
+
+Custom server-side action types (from button clicks) are forwarded via `sendInput` as the action JSON string.
 
 ---
 
 ## 9. Widget Height Calculations
 
-The `widgetHeight()` method in SchemaScreen determines how much vertical space each widget needs:
+SchemaScreen calculates each widget's vertical space before rendering. Approximate defaults:
 
-```java
-private int widgetHeight(JsonObject w, String type, int panelW, int panelPadding) {
-    return switch (type) {
-        case "toolbar" -> intVal(w, "height", 14);
-        case "history" -> intVal(w, "height", 220); // ignored if flex=true
-        case "question_options" -> q.size * (buttonH + gap) + 4; // 0 if no question
-        case "input" -> inputWidgetHeight(w, panelW, panelPadding);
-        case "hint" -> intVal(w, "height", 12);
-        case "text" -> intVal(w, "height", 14); // or computed if wrap=true
-        case "action_row" -> intVal(w, "height", 20);
-        case "dropdown" -> base + (open ? options.size * optionH : 0);
-        case "setting_toggle" -> intVal(w, "height", 18);
-        case "state_badge" -> intVal(w, "height", 14);
-        case "tab_container" -> intVal(w, "height", 220);
-        case "modal" -> 0; // rendered separately
-        case "divider" -> 1;
-        case "spacer" -> intVal(w, "height", 8);
-        default -> 0;
-    };
-}
-```
+| Widget type | Default height | Notes |
+|-------------|---------------|-------|
+| `toolbar` | 14 | Fixed |
+| `history` | 220 | Overridden when `flex: true` |
+| `question_options` | dynamic | `options.count * (buttonH + gap) + 4`; 0 if no question |
+| `input` | dynamic | Expands from `minRows * lineHeight + 10` up to `height` |
+| `hint` | 12 | Fixed |
+| `text` | 14 | Auto-computed if `wrap: true` |
+| `action_row` | 20 | Fixed |
+| `dropdown` | 18 | Adds `options.count * optionHeight` when open |
+| `setting_toggle` | 18 | Fixed |
+| `state_badge` | 14 | Fixed |
+| `tab_container` | 220 | Fixed total; content area = height - tabHeight - 3 |
+| `modal` | 0 | Rendered in a separate pass after normal widgets |
+| `divider` | 1 | Fixed |
+| `spacer` | 8 | Fixed |
+| `panel` | flex | Takes remaining vertical space |
+| `collapsible` | header + children | Children height added only when open |
+| `scroll_panel` | configurable | Clips children to `height`, scrolls internally |
+| `search_box` | 18 | Fixed |
+| `filter_chips` | 20 | Fixed |
+| `multi_select_dropdown` | 18 | Fixed closed; expands when open |
 
 **Flex Layout:**
 1. Calculate fixed heights for all non-flex, non-modal widgets
-2. Count flex widgets (only `history` with `flex: true`)
+2. Count flex widgets (`history` with `flex: true`, or `panel`)
 3. Remaining space = `max(120, screenHeight - titleHeight - fixedHeight - padding)`
 4. Flex height per widget = `remaining / flexCount`
-5. Max one flex widget per layout
+5. Only one flex widget per layout is fully supported
 
 ---
 
@@ -921,12 +1090,12 @@ Widgets can override Z via the `z` property in the action object or widget itsel
 ## 13. Summary: What's Actually Supported
 
 ### Safe to Use:
-✅ All 14 widget types listed in section 4  
+✅ All 20 widget types listed in section 4  
 ✅ All internal action types listed in section 5.2  
 ✅ Color properties with hex values or settings references  
 ✅ Template variables in text and action fields  
-✅ Nested widgets in tabs, modals  
-✅ Flex layout with history widget  
+✅ Nested widgets in tabs, modals, collapsibles, scroll panels, panels  
+✅ Flex layout with `history` widget or `panel` widget  
 ✅ Keyboard input, text wrapping, scrolling  
 
 ### Validated Properties:
@@ -942,6 +1111,8 @@ Widgets can override Z via the `z` property in the action object or widget itsel
 ❌ Invalid color hex (falls back to default)  
 ❌ Negative dimensions (may render incorrectly)  
 ❌ Modal outside screens array (never shown)  
+❌ Using `"key"` instead of `"binding"` in `binding_update` events (field is `"binding"`)  
+❌ Using `"updates"` instead of `"values"` in `binding_updates` events (field is `"values"`)  
 
 ---
 

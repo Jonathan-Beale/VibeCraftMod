@@ -29,7 +29,7 @@ Version source:
 
 1. Install Fabric Loader for Minecraft 1.21.4.
 2. Install Fabric API for 1.21.4.
-3. Place VibeCraftMod-1.0.0.jar into your Minecraft mods folder.
+3. Place VibeCraftMod-1.0.10.jar into your Minecraft mods folder.
 4. Launch the Fabric profile.
 5. Join a server that has the VibeCraft/EnchantForge plugin side configured.
 
@@ -71,11 +71,11 @@ Invoke-WebRequest $FabricApiUrl -OutFile (Join-Path $ModsDir $FabricApiJar)
 
 # Copy VibeCraftMod jar from this repo into mods folder
 # Run this command block from the VibeCraftMod repo root.
-$VibeCraftModSource = Join-Path (Get-Location) "releases\\VibeCraftMod-1.0.0.jar"
+$VibeCraftModSource = Join-Path (Get-Location) "releases\\VibeCraftMod-1.0.10.jar"
 if (-not (Test-Path $VibeCraftModSource)) {
   throw "Missing release jar: $VibeCraftModSource"
 }
-Copy-Item $VibeCraftModSource (Join-Path $ModsDir "VibeCraftMod-1.0.0.jar") -Force
+Copy-Item $VibeCraftModSource (Join-Path $ModsDir "VibeCraftMod-1.0.10.jar") -Force
 
 # Verify installed mod jars
 Get-ChildItem $ModsDir | Where-Object { $_.Name -match "fabric-api|VibeCraftMod" } | Select-Object Name, Length, LastWriteTime
@@ -105,11 +105,11 @@ From the VibeCraftMod folder:
 - gradlew.bat build
 
 Build output:
-- build/libs/VibeCraftMod-1.0.0.jar
+- build/libs/VibeCraftMod-1.0.10.jar
 
 ## Local Deploy (Windows)
 
-- Copy-Item .\\build\\libs\\VibeCraftMod-1.0.0.jar "$env:APPDATA\\.minecraft\\mods\\VibeCraftMod-1.0.0.jar" -Force
+- Copy-Item .\\build\\libs\\VibeCraftMod-1.0.10.jar "$env:APPDATA\\.minecraft\\mods\\VibeCraftMod-1.0.10.jar" -Force
 
 ## LAN Sharing (Same House)
 
@@ -129,13 +129,19 @@ LAN direct connect target:
 - Plugin-scoped screens and actions.
 - Registry-based internal actions for schema buttons and controls.
 - Schema-defined HUD overlays for text, bars, icons, and item slots.
-- Client HUD chat rendering and tool status display.
+- Client HUD chat rendering and tool status display (fades after stream ends).
+- Armor HUD overlay: four equipment slots rendered at screen-right with vanilla hotbar styling and cooldown sweep.
+- Hostile radar overlay: aerial disc minimap (bottom-right) showing nearby hostile entity positions, player-forward-aligned.
+- Entity glow highlighting: server-driven per-entity glow and team color (red/aqua) via `ef_highlight_entities` event.
+- Hostile-direction indicator: pulsing screen-edge arrow when a highlighted entity is behind the player.
+- Mixin: suppresses player leg animation while `thruster_flying` scoreboard tag is active.
 - Plugin message networking for:
   - message
   - request_history
   - set_setting
   - clear_history
 - Optional sequence/version guards for ordered plugin event payloads.
+- Plugin-safe schema merging: `ui_schema` from one plugin does not wipe screens from other plugins.
 - Runtime debug flags:
   - schema events
   - packet/event flow
@@ -144,37 +150,41 @@ LAN direct connect target:
 ## Project Structure
 
 - src/main/java/com/example/vibecraftmod
-  - network: packet payloads and event handling
-  - screen: dynamic UI screen rendering and actions
-  - hud: active HUD rendering callbacks
-  - ui: schema model and overlay framework classes
+  - network: packet payloads and event handling (ModPackets, VibeCraftEventPayload, VibeCraftInputPayload)
+  - screen: dynamic UI screen rendering and actions (SchemaScreen, SchemaSettingsScreen)
+  - hud: HUD render callbacks (HudOverlay, ArmorHudOverlay, HostileRadarOverlay, HudState)
+  - ui: schema model, overlay framework, and widget classes
+  - mixin: Fabric mixins (EntityGlowMixin for entity highlighting, PlayerLimbMixin for thruster flight)
+  - toast: completion notification toast (CompletionToast)
   - settings/config: persisted client and plugin-scoped settings
+  - EntityHighlightManager: manages server-driven entity glow highlights and team colors
 - src/main/resources/fabric.mod.json: Fabric mod metadata and entrypoint
+- src/main/resources/vibecraftmod.mixins.json: mixin registration
 
 ## Known Gaps
 
-The overlay and action systems are functional, but a few extension points remain intentionally lightweight.
+The overlay and action systems are functional. A few areas remain intentionally lightweight.
 
 Current gap details:
 
-1. Overlay data binding is still simple.
-- OverlayDataBinding currently acts as an in-memory binding store.
-- Complex data source adapters still need to be added as needed.
+1. Overlay data binding is in-memory only.
+- OverlayDataBinding is a key-value store updated by server-sent `binding_update` / `binding_updates` events.
+- No client-side data sources (health, position, etc.) are wired; all data must be pushed from the server.
 
-2. Overlay widgets are functional but minimal.
-- SlotOverlayWidget
-- BarOverlayWidget
-- IconOverlayWidget
-- TextOverlayWidget
-Each class renders a basic schema-driven representation and can be extended further.
+2. Schema-defined overlay widgets are basic.
+- SlotOverlayWidget: draws an item in a hotbar-style slot from binding data.
+- BarOverlayWidget: fills a rectangle proportionally based on a 0–1 (or 0–100) numeric binding.
+- IconOverlayWidget: draws a text/character icon from binding or config.
+- TextOverlayWidget: draws a string from binding or config.
+- HostileIndicatorWidget: screen-edge directional arrow driven by `{"side":"left"|"right","timestamp":...}` binding.
+Each renders at an absolute pixel position from OverlayDef; no anchor-relative layout is applied.
 
-3. The most advanced overlay behaviors still need richer layout and data adapters.
-- OverlayManager is now registered through the main HUD render path.
-- More complex overlay widgets can still be added without changing the renderer core.
+3. EnchantForge HUD visualizations (energy bar, cooldown strip, active effects, trigger flash, absorption regen, combat state) are planned but not yet implemented. See REFACTOR_PLAN.md.
 
 Impact:
-- Core dynamic screens and main chat/catalog workflows are functional.
-- The overlay subsystem is usable and extensible, but some data adapters remain intentionally minimal.
+- Core dynamic screens and chat/catalog workflows are functional.
+- Hardcoded HUDs (ArmorHudOverlay, HostileRadarOverlay) are fully functional.
+- The schema-driven overlay subsystem is usable; data adapters for complex layouts remain minimal.
 
 ## Architecture (2026+)
 

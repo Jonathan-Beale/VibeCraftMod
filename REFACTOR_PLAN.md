@@ -1,5 +1,24 @@
 # VibeCraftMod — EnchantForge Visualization Plan
 
+## Already Implemented (not in the checklist below)
+
+The following features are fully implemented in the current codebase:
+
+- **ArmorHudOverlay** — Four equipment slots rendered at screen-right using vanilla hotbar sprites with
+  item cooldown sweep. Registered in `VibeCraftMod.onInitializeClient()`.
+- **HostileRadarOverlay** — Aerial minimap disc (bottom-right corner, 48 px radius) showing nearby
+  hostile entity positions rotated to player facing. Visible only when highlighted hostiles are within
+  32 blocks. Registered in `VibeCraftMod.onInitializeClient()`.
+- **EntityHighlightManager + EntityGlowMixin** — Server sends `ef_highlight_entities` event with
+  arrays of entity network IDs. `EntityGlowMixin` forces those entities to glow; `EntityHighlightManager`
+  assigns them to client-side scoreboard teams for red/aqua color. Cleared on disconnect.
+- **HostileIndicatorWidget** — Schema-defined overlay type `hostile_indicator`; pulsing screen-edge
+  arrow that fades after 3 seconds. Driven by binding `{"side":"left"|"right","timestamp":<epochMs>}`.
+- **PlayerLimbMixin** — Suppresses the local player's leg animation while the `thruster_flying`
+  scoreboard tag is present (set by EnchantForge during jet-pack flight).
+
+---
+
 ## Overview
 
 EnchantForge tracks significant per-player state (energy, active effects, cooldowns, combat status,
@@ -45,7 +64,7 @@ In `EnergyManager.onChanged` callback (wired at startup in `EnchantForge.onEnabl
 ```json
 {
   "type": "binding_updates",
-  "updates": {
+  "values": {
     "enchantforge.energy":       75.4,
     "enchantforge.energy_max":   100.0,
     "enchantforge.charge_tier":  0
@@ -99,7 +118,7 @@ Send on every cooldown set and on each tick where cooldown expires, keyed by enc
 ```json
 {
   "type": "binding_updates",
-  "updates": {
+  "values": {
     "enchantforge.cooldown.berserker":   0.0,
     "enchantforge.cooldown.last_stand":  47.2,
     "enchantforge.cooldown.bulwark":     0.0
@@ -143,7 +162,7 @@ Send when `ActiveEffectTracker` entries change (on apply, on end-condition met, 
 ```json
 {
   "type": "binding_updates",
-  "updates": {
+  "values": {
     "enchantforge.effect.berserker.active":    true,
     "enchantforge.effect.berserker.label":     "Berserker II",
     "enchantforge.effect.berserker.remaining": 14.6,
@@ -182,7 +201,7 @@ Send immediately after a trigger dispatch succeeds (in `StackingDispatcher.dispa
 ```json
 {
   "type": "binding_updates",
-  "updates": {
+  "values": {
     "enchantforge.flash.label":   "Berserker II",
     "enchantforge.flash.ts":      1716076234521
   }
@@ -218,7 +237,7 @@ Send in the `refreshOutOfCombat` ticker while regen is running, and once more on
 ```json
 {
   "type": "binding_updates",
-  "updates": {
+  "values": {
     "enchantforge.absorption":        6.4,
     "enchantforge.absorption_max":    8.0,
     "enchantforge.absorption_regen":  true
@@ -228,8 +247,9 @@ Send in the `refreshOutOfCombat` ticker while regen is running, and once more on
 
 **Client-side (VibeCraftMod)**
 
-Augment the existing `enchantforge:armor_sidebar` overlay or add a dedicated absorption widget.
+Add a dedicated absorption widget to `ui/main.json` overlays.
 Show a pulsing or filling bar only when `absorption_regen` is `true`; hide otherwise.
+(Note: `ArmorHudOverlay` is a separate hardcoded HUD for equipment slots and is unrelated to this overlay.)
 
 **Scope**
 - EnchantForge: edit `EquipmentEnchantListener.java` (send updates in regen ticker),
@@ -252,7 +272,7 @@ combat state. Low visual weight — not a prominent element.
 Send on `CombatTracker.recordHit()` (combat start) and when the regen ticker detects the player has
 been out of combat long enough to begin regen (combat cleared):
 ```json
-{ "type": "binding_update", "key": "enchantforge.in_combat", "value": true }
+{ "type": "binding_update", "binding": "enchantforge.in_combat", "value": true }
 ```
 
 **Client-side (VibeCraftMod)**
@@ -358,6 +378,8 @@ Only VibeCraftMod users see colored glints; other players see vanilla purple.
 ---
 
 ## Files Touched Summary
+
+Files still to be created or modified for §1–7. Already-implemented features are listed in the "Already Implemented" section above.
 
 | File | Repo | Action | Phase |
 |------|------|--------|-------|
