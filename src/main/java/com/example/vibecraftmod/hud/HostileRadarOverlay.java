@@ -60,16 +60,16 @@ public class HostileRadarOverlay {
 
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
+        RenderSystem.disableDepthTest();
+        RenderSystem.disableCull();
         RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
 
-        // --- Background disc ---
-        var buf = Tessellator.getInstance().begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR);
-        buf.vertex(matrix, cx, cy, 0).color(0, 0, 0, 160);
+        // --- Background disc (TRIANGLE_STRIP: interleave perimeter+center; degenerate center-center pairs are no-ops) ---
+        var buf = Tessellator.getInstance().begin(VertexFormat.DrawMode.TRIANGLE_STRIP, VertexFormats.POSITION_COLOR);
         for (int i = 0; i <= DISC_SEGMENTS; i++) {
             float angle = (float) (2 * Math.PI * i / DISC_SEGMENTS);
-            buf.vertex(matrix, cx + (float) Math.cos(angle) * RADIUS,
-                               cy + (float) Math.sin(angle) * RADIUS, 0)
-               .color(0, 0, 0, 160);
+            buf.vertex(matrix, cx + (float) Math.cos(angle) * RADIUS, cy + (float) Math.sin(angle) * RADIUS, 0).color(0, 0, 0, 160);
+            buf.vertex(matrix, cx, cy, 0).color(0, 0, 0, 160);
         }
         BufferRenderer.drawWithGlobalProgram(buf.end());
 
@@ -93,7 +93,7 @@ public class HostileRadarOverlay {
         float tickHalf  = 2.5f;
         float tcos = (float) Math.cos(tickAngle), tsin = (float) Math.sin(tickAngle);
         float tpx = -tsin, tpy = tcos; // perpendicular
-        buf = Tessellator.getInstance().begin(VertexFormat.DrawMode.TRIANGLES, VertexFormats.POSITION_COLOR);
+        buf = Tessellator.getInstance().begin(VertexFormat.DrawMode.TRIANGLE_STRIP, VertexFormats.POSITION_COLOR);
         buf.vertex(matrix, cx + tcos * tickOuter - tpx * tickHalf, cy + tsin * tickOuter - tpy * tickHalf, 0).color(255, 255, 255, 200);
         buf.vertex(matrix, cx + tcos * tickOuter + tpx * tickHalf, cy + tsin * tickOuter + tpy * tickHalf, 0).color(255, 255, 255, 200);
         buf.vertex(matrix, cx + tcos * tickInner,                  cy + tsin * tickInner,                  0).color(255, 255, 255, 200);
@@ -144,18 +144,19 @@ public class HostileRadarOverlay {
             drawDot(matrix, dotX, dotY, dotR, 255, 40, 40, 230);
         }
 
+        RenderSystem.enableDepthTest();
+        RenderSystem.enableCull();
         RenderSystem.disableBlend();
     }
 
     private static void drawDot(Matrix4f matrix, float x, float y, float r, int red, int green, int blue, int alpha) {
         RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
         int segments = 12;
-        var buf = Tessellator.getInstance().begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR);
-        buf.vertex(matrix, x, y, 0).color(red, green, blue, alpha);
+        var buf = Tessellator.getInstance().begin(VertexFormat.DrawMode.TRIANGLE_STRIP, VertexFormats.POSITION_COLOR);
         for (int i = 0; i <= segments; i++) {
             float a = (float) (2 * Math.PI * i / segments);
-            buf.vertex(matrix, x + (float) Math.cos(a) * r, y + (float) Math.sin(a) * r, 0)
-               .color(red, green, blue, alpha);
+            buf.vertex(matrix, x + (float) Math.cos(a) * r, y + (float) Math.sin(a) * r, 0).color(red, green, blue, alpha);
+            buf.vertex(matrix, x, y, 0).color(red, green, blue, alpha);
         }
         BufferRenderer.drawWithGlobalProgram(buf.end());
     }
