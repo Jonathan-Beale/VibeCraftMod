@@ -56,8 +56,15 @@ public class HostileRadarOverlay {
             double dx = ePos.x - playerPos.x;
             double dz = ePos.z - playerPos.z;
 
-            // Horizontal angle from player-forward to entity (0 = ahead, π/2 = right, ±π = behind)
+            // Horizontal angle from player-forward to entity; normalise to (-π, π)
             double relYaw = Math.atan2(-dx, dz) - yawRad;
+            relYaw = ((relYaw + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+
+            // Suppress indicator when the entity is inside the camera's horizontal FOV
+            // (it's already visible on screen — the glow is sufficient)
+            double halfFovH = Math.toRadians(client.options.getFov().getValue())
+                              * screenW / screenH / 2.0;
+            if (Math.abs(relYaw) < halfFovH) continue;
 
             // Screen-space direction from center toward entity
             float sdx = (float) Math.sin(relYaw);
@@ -77,8 +84,10 @@ public class HostileRadarOverlay {
             float closeness = 1.0f - dist / MAX_RANGE;
             float size = MIN_SIZE + closeness * (MAX_SIZE - MIN_SIZE);
 
-            // Rotate so tip points outward (away from center, toward the off-screen enemy)
-            float rotation = (float) Math.atan2(sdx, -sdy);
+            // atan2(-sdx,-sdy): tip rotates from local-up to outward direction.
+            // POSITIVE_Z rotation appears clockwise on screen (GUI has Y-down), so the
+            // formula is negated vs the standard CCW expectation.
+            float rotation = (float) Math.atan2(-sdx, -sdy);
 
             drawArrow(context, arrowX, arrowY, size, rotation);
         }
