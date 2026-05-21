@@ -12,7 +12,6 @@ import net.minecraft.client.render.Tessellator;
 import net.minecraft.client.render.VertexFormat;
 import net.minecraft.client.render.VertexFormats;
 import net.minecraft.entity.Entity;
-import net.minecraft.util.math.RotationAxis;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
 
@@ -61,13 +60,12 @@ public class HostileRadarOverlay {
             relYaw = ((relYaw + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
 
             // Suppress indicator when the entity is inside the camera's horizontal FOV
-            // (it's already visible on screen — the glow is sufficient)
             double halfFovH = Math.toRadians(client.options.getFov().getValue())
                               * screenW / screenH / 2.0;
             if (Math.abs(relYaw) < halfFovH) continue;
 
-            // Screen-space direction from center toward entity
-            float sdx = (float) Math.sin(relYaw);
+            // Screen-space direction from center toward entity (outward direction)
+            float sdx = (float)  Math.sin(relYaw);
             float sdy = -(float) Math.cos(relYaw);
 
             // Intersect (sdx,sdy) ray with the screen boundary rectangle minus margin
@@ -80,33 +78,48 @@ public class HostileRadarOverlay {
             float arrowX = cx + sdx * t;
             float arrowY = cy + sdy * t;
 
-            // Larger arrow for closer enemies
             float closeness = 1.0f - dist / MAX_RANGE;
             float size = MIN_SIZE + closeness * (MAX_SIZE - MIN_SIZE);
 
-            // atan2(-sdx,-sdy): tip rotates from local-up to outward direction.
-            // POSITIVE_Z rotation appears clockwise on screen (GUI has Y-down), so the
-            // formula is negated vs the standard CCW expectation.
-            float rotation = (float) Math.atan2(-sdx, -sdy);
-
-            drawArrow(context, arrowX, arrowY, size, rotation);
+            drawArrow(context, arrowX, arrowY, sdx, sdy, size);
         }
     }
 
-    private static void drawArrow(DrawContext context, float x, float y, float size, float rotation) {
-        context.getMatrices().push();
-        context.getMatrices().translate(x, y, 0.0f);
-        context.getMatrices().multiply(RotationAxis.POSITIVE_Z.rotation(rotation));
+    /**
+     * Draws an arrow at (x, y) with its tip pointing in the (fx, fy) direction.
+     * All vertices computed directly in screen space — no rotation matrix needed.
+     */
+    private static void drawArrow(DrawContext context, float x, float y,
+                                  float fx, float fy, float size) {
+        // Perpendicular vector (rotated 90° CCW in screen space)
+        float px = -fy;
+        float py =  fx;
+
+        // Tip extends outward from the anchor point
+        float tipX = x + fx * size;
+        float tipY = y + fy * size;
+
+        // Arrowhead base: slightly inward from anchor, spanning full width
+        float baseInset = size * 0.30f;
+        float halfWidth = size * 0.55f;
+        float bLX = x - fx * baseInset - px * halfWidth;
+        float bLY = y - fy * baseInset - py * halfWidth;
+        float bRX = x - fx * baseInset + px * halfWidth;
+        float bRY = y - fy * baseInset + py * halfWidth;
+
+        // Shaft: narrow rectangle trailing inward from the arrowhead base
+        float shaftHalf = size * 0.20f;
+        float shaftLen  = size * 0.75f;
+        float s1LX = x - fx * baseInset - px * shaftHalf;
+        float s1LY = y - fy * baseInset - py * shaftHalf;
+        float s1RX = x - fx * baseInset + px * shaftHalf;
+        float s1RY = y - fy * baseInset + py * shaftHalf;
+        float s2LX = x - fx * shaftLen  - px * shaftHalf;
+        float s2LY = y - fy * shaftLen  - py * shaftHalf;
+        float s2RX = x - fx * shaftLen  + px * shaftHalf;
+        float s2RY = y - fy * shaftLen  + py * shaftHalf;
 
         Matrix4f matrix = context.getMatrices().peek().getPositionMatrix();
-
-        // Arrowhead: tip at top, wide base below center
-        float tipY  = -size;
-        float baseY =  size * 0.30f;
-        float halfW =  size * 0.55f;
-        // Shaft: narrow rectangle below the base
-        float shaftW =  size * 0.20f;
-        float shaftB =  size * 0.75f;
 
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
@@ -115,21 +128,19 @@ public class HostileRadarOverlay {
         var buffer = Tessellator.getInstance().begin(VertexFormat.DrawMode.TRIANGLES, VertexFormats.POSITION_COLOR);
 
         // Arrowhead triangle
-        buffer.vertex(matrix,      0, tipY,  0).color(255, 30, 30, 230);
-        buffer.vertex(matrix, -halfW, baseY, 0).color(255, 30, 30, 230);
-        buffer.vertex(matrix,  halfW, baseY, 0).color(255, 30, 30, 230);
+        buffer.vertex(matrix, tipX, tipY, 0).color(255, 30, 30, 230);
+        buffer.vertex(matrix, bLX,  bLY,  0).color(255, 30, 30, 230);
+        buffer.vertex(matrix, bRX,  bRY,  0).color(255, 30, 30, 230);
 
         // Shaft (two triangles = rectangle)
-        buffer.vertex(matrix, -shaftW, baseY,  0).color(220, 30, 30, 200);
-        buffer.vertex(matrix, -shaftW, shaftB, 0).color(220, 30, 30, 200);
-        buffer.vertex(matrix,  shaftW, baseY,  0).color(220, 30, 30, 200);
-        buffer.vertex(matrix,  shaftW, baseY,  0).color(220, 30, 30, 200);
-        buffer.vertex(matrix, -shaftW, shaftB, 0).color(220, 30, 30, 200);
-        buffer.vertex(matrix,  shaftW, shaftB, 0).color(220, 30, 30, 200);
+        buffer.vertex(matrix, s1LX, s1LY, 0).color(220, 30, 30, 200);
+        buffer.vertex(matrix, s2LX, s2LY, 0).color(220, 30, 30, 200);
+        buffer.vertex(matrix, s1RX, s1RY, 0).color(220, 30, 30, 200);
+        buffer.vertex(matrix, s1RX, s1RY, 0).color(220, 30, 30, 200);
+        buffer.vertex(matrix, s2LX, s2LY, 0).color(220, 30, 30, 200);
+        buffer.vertex(matrix, s2RX, s2RY, 0).color(220, 30, 30, 200);
 
         BufferRenderer.drawWithGlobalProgram(buffer.end());
-
         RenderSystem.disableBlend();
-        context.getMatrices().pop();
     }
 }
