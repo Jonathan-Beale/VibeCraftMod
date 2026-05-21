@@ -21,7 +21,7 @@ import org.joml.Matrix4f;
  */
 public class HostileRadarOverlay {
 
-    private static final float MAX_RANGE    = 16.0f;
+    private static final float MAX_RANGE    = 32.0f;
     private static final float RADIUS       = 48.0f;   // disc radius in scaled pixels
     private static final float MARGIN       = 10.0f;   // gap from screen edge
     private static final int   DISC_SEGMENTS = 48;
