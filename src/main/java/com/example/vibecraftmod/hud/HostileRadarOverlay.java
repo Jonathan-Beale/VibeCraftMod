@@ -116,12 +116,12 @@ public class HostileRadarOverlay {
             double worldDz = ePos.z - playerPos.z;
 
             // Rotate world offset into player-forward-up frame.
-            // forward = (-sin(yaw), cos(yaw)) in (X,Z); right = (cos(yaw), -sin(yaw)) in (X,Z)
-            // mapX = dot(delta, right)    = worldDx*cos - worldDz*sin  (positive = screen-right)
+            // forward = (-sin(yaw), cos(yaw)) in (X,Z); right = (cos(yaw), sin(yaw)) in (X,Z)
+            // mapX = dot(delta, right)    = worldDx*cos + worldDz*sin  (positive = screen-right)
             // mapY = dot(delta, forward)  = -worldDx*sin + worldDz*cos (positive = screen-up → negate for screen-Y)
             float sinYaw = (float) Math.sin(yawRad);
             float cosYaw = (float) Math.cos(yawRad);
-            float mapX = (float) (worldDx * cosYaw - worldDz * sinYaw);
+            float mapX = (float) (worldDx * cosYaw + worldDz * sinYaw);
             float mapY = (float) (worldDx * sinYaw - worldDz * cosYaw);
 
             // Scale: MAX_RANGE world units → RADIUS screen pixels, clamp inside disc
