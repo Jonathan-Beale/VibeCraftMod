@@ -16,15 +16,15 @@ import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
 
 /**
- * Draws screen-edge arrows pointing toward nearby hostile (red-highlighted) entities.
- * Arrow size scales with proximity; entities beyond MAX_RANGE are suppressed.
+ * Aerial radar disc in the bottom-right corner.
+ * Rotates with the player (forward = up). Only visible when hostile entities are nearby.
  */
 public class HostileRadarOverlay {
 
-    private static final float MAX_RANGE   = 16.0f;
-    private static final float EDGE_MARGIN = 26.0f;
-    private static final float MIN_SIZE    =  8.0f;
-    private static final float MAX_SIZE    = 22.0f;
+    private static final float MAX_RANGE    = 16.0f;
+    private static final float RADIUS       = 48.0f;   // disc radius in scaled pixels
+    private static final float MARGIN       = 10.0f;   // gap from screen edge
+    private static final int   DISC_SEGMENTS = 48;
 
     public static void register() {
         HudRenderCallback.EVENT.register(HostileRadarOverlay::render);
@@ -33,91 +33,28 @@ public class HostileRadarOverlay {
     private static void render(DrawContext context, RenderTickCounter tickCounter) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null || client.world == null || client.options.hudHidden) return;
-        if (EntityHighlightManager.getHighlighted().isEmpty()) return;
+
+        // Collect visible hostile entities within range
+        var highlighted = EntityHighlightManager.getHighlighted();
+        if (highlighted.isEmpty()) return;
+
+        Vec3d playerPos = client.player.getPos();
+        float yawRad = (float) Math.toRadians(client.player.getYaw());
+
+        boolean anyInRange = false;
+        for (var entry : highlighted.entrySet()) {
+            if (!"red".equals(entry.getValue())) continue;
+            Entity e = client.world.getEntityById(entry.getKey());
+            if (e != null && client.player.distanceTo(e) <= MAX_RANGE) { anyInRange = true; break; }
+        }
+        if (!anyInRange) return;
 
         int screenW = context.getScaledWindowWidth();
         int screenH = context.getScaledWindowHeight();
-        float cx = screenW / 2.0f;
-        float cy = screenH / 2.0f;
-        float yawRad = (float) Math.toRadians(client.player.getYaw());
-        Vec3d playerPos = client.player.getPos();
 
-        for (var entry : EntityHighlightManager.getHighlighted().entrySet()) {
-            if (!"red".equals(entry.getValue())) continue;
-
-            Entity entity = client.world.getEntityById(entry.getKey());
-            if (entity == null) continue;
-
-            float dist = client.player.distanceTo(entity);
-            if (dist > MAX_RANGE) continue;
-
-            Vec3d ePos = entity.getPos();
-            double dx = ePos.x - playerPos.x;
-            double dz = ePos.z - playerPos.z;
-
-            // Horizontal angle from player-forward to entity; normalise to (-π, π)
-            double relYaw = Math.atan2(-dx, dz) - yawRad;
-            relYaw = ((relYaw + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
-
-            // Suppress indicator when the entity is inside the camera's horizontal FOV
-            double halfFovH = Math.toRadians(client.options.getFov().getValue())
-                              * screenW / screenH / 2.0;
-            if (Math.abs(relYaw) < halfFovH) continue;
-
-            // Screen-space direction from center toward entity (outward direction)
-            float sdx = (float)  Math.sin(relYaw);
-            float sdy = -(float) Math.cos(relYaw);
-
-            // Intersect (sdx,sdy) ray with the screen boundary rectangle minus margin
-            float halfW = cx - EDGE_MARGIN;
-            float halfH = cy - EDGE_MARGIN;
-            float tx = Math.abs(sdx) > 0.001f ? halfW / Math.abs(sdx) : Float.MAX_VALUE;
-            float ty = Math.abs(sdy) > 0.001f ? halfH / Math.abs(sdy) : Float.MAX_VALUE;
-            float t = Math.min(tx, ty);
-
-            float arrowX = cx + sdx * t;
-            float arrowY = cy + sdy * t;
-
-            float closeness = 1.0f - dist / MAX_RANGE;
-            float size = MIN_SIZE + closeness * (MAX_SIZE - MIN_SIZE);
-
-            drawArrow(context, arrowX, arrowY, sdx, sdy, size);
-        }
-    }
-
-    /**
-     * Draws an arrow at (x, y) with its tip pointing in the (fx, fy) direction.
-     * All vertices computed directly in screen space — no rotation matrix needed.
-     */
-    private static void drawArrow(DrawContext context, float x, float y,
-                                  float fx, float fy, float size) {
-        // Perpendicular vector (rotated 90° CCW in screen space)
-        float px = -fy;
-        float py =  fx;
-
-        // Tip extends outward from the anchor point
-        float tipX = x + fx * size;
-        float tipY = y + fy * size;
-
-        // Arrowhead base: slightly inward from anchor, spanning full width
-        float baseInset = size * 0.30f;
-        float halfWidth = size * 0.55f;
-        float bLX = x - fx * baseInset - px * halfWidth;
-        float bLY = y - fy * baseInset - py * halfWidth;
-        float bRX = x - fx * baseInset + px * halfWidth;
-        float bRY = y - fy * baseInset + py * halfWidth;
-
-        // Shaft: narrow rectangle trailing inward from the arrowhead base
-        float shaftHalf = size * 0.20f;
-        float shaftLen  = size * 0.75f;
-        float s1LX = x - fx * baseInset - px * shaftHalf;
-        float s1LY = y - fy * baseInset - py * shaftHalf;
-        float s1RX = x - fx * baseInset + px * shaftHalf;
-        float s1RY = y - fy * baseInset + py * shaftHalf;
-        float s2LX = x - fx * shaftLen  - px * shaftHalf;
-        float s2LY = y - fy * shaftLen  - py * shaftHalf;
-        float s2RX = x - fx * shaftLen  + px * shaftHalf;
-        float s2RY = y - fy * shaftLen  + py * shaftHalf;
+        // Disc center: bottom-right corner with margin
+        float cx = screenW - MARGIN - RADIUS;
+        float cy = screenH - MARGIN - RADIUS;
 
         Matrix4f matrix = context.getMatrices().peek().getPositionMatrix();
 
@@ -125,22 +62,101 @@ public class HostileRadarOverlay {
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
 
-        var buffer = Tessellator.getInstance().begin(VertexFormat.DrawMode.TRIANGLES, VertexFormats.POSITION_COLOR);
+        // --- Background disc ---
+        var buf = Tessellator.getInstance().begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR);
+        buf.vertex(matrix, cx, cy, 0).color(0, 0, 0, 160);
+        for (int i = 0; i <= DISC_SEGMENTS; i++) {
+            float angle = (float) (2 * Math.PI * i / DISC_SEGMENTS);
+            buf.vertex(matrix, cx + (float) Math.cos(angle) * RADIUS,
+                               cy + (float) Math.sin(angle) * RADIUS, 0)
+               .color(0, 0, 0, 160);
+        }
+        BufferRenderer.drawWithGlobalProgram(buf.end());
 
-        // Arrowhead triangle
-        buffer.vertex(matrix, tipX, tipY, 0).color(255, 30, 30, 230);
-        buffer.vertex(matrix, bLX,  bLY,  0).color(255, 30, 30, 230);
-        buffer.vertex(matrix, bRX,  bRY,  0).color(255, 30, 30, 230);
+        // --- Disc border ---
+        buf = Tessellator.getInstance().begin(VertexFormat.DrawMode.TRIANGLE_STRIP, VertexFormats.POSITION_COLOR);
+        float borderW = 1.5f;
+        for (int i = 0; i <= DISC_SEGMENTS; i++) {
+            float angle = (float) (2 * Math.PI * i / DISC_SEGMENTS);
+            float cos = (float) Math.cos(angle), sin = (float) Math.sin(angle);
+            buf.vertex(matrix, cx + cos * RADIUS,              cy + sin * RADIUS,              0).color(255, 255, 255, 60);
+            buf.vertex(matrix, cx + cos * (RADIUS - borderW),  cy + sin * (RADIUS - borderW),  0).color(255, 255, 255, 60);
+        }
+        BufferRenderer.drawWithGlobalProgram(buf.end());
 
-        // Shaft (two triangles = rectangle)
-        buffer.vertex(matrix, s1LX, s1LY, 0).color(220, 30, 30, 200);
-        buffer.vertex(matrix, s2LX, s2LY, 0).color(220, 30, 30, 200);
-        buffer.vertex(matrix, s1RX, s1RY, 0).color(220, 30, 30, 200);
-        buffer.vertex(matrix, s1RX, s1RY, 0).color(220, 30, 30, 200);
-        buffer.vertex(matrix, s2LX, s2LY, 0).color(220, 30, 30, 200);
-        buffer.vertex(matrix, s2RX, s2RY, 0).color(220, 30, 30, 200);
+        // --- Forward direction tick (small notch at top of disc = player's facing) ---
+        // In the rotated frame, "up" on the disc is always the player's forward direction.
+        // Draw a bright tick on the disc rim at the top (angle = -PI/2 in screen space).
+        float tickAngle = -(float) Math.PI / 2.0f; // straight up
+        float tickOuter = RADIUS - 1.0f;
+        float tickInner = RADIUS - 7.0f;
+        float tickHalf  = 2.5f;
+        float tcos = (float) Math.cos(tickAngle), tsin = (float) Math.sin(tickAngle);
+        float tpx = -tsin, tpy = tcos; // perpendicular
+        buf = Tessellator.getInstance().begin(VertexFormat.DrawMode.TRIANGLES, VertexFormats.POSITION_COLOR);
+        buf.vertex(matrix, cx + tcos * tickOuter - tpx * tickHalf, cy + tsin * tickOuter - tpy * tickHalf, 0).color(255, 255, 255, 200);
+        buf.vertex(matrix, cx + tcos * tickOuter + tpx * tickHalf, cy + tsin * tickOuter + tpy * tickHalf, 0).color(255, 255, 255, 200);
+        buf.vertex(matrix, cx + tcos * tickInner,                  cy + tsin * tickInner,                  0).color(255, 255, 255, 200);
+        BufferRenderer.drawWithGlobalProgram(buf.end());
 
-        BufferRenderer.drawWithGlobalProgram(buffer.end());
+        // --- Player dot (center) ---
+        drawDot(matrix, cx, cy, 3.0f, 255, 255, 255, 230);
+
+        // --- Enemy dots ---
+        for (var entry : highlighted.entrySet()) {
+            if (!"red".equals(entry.getValue())) continue;
+            Entity entity = client.world.getEntityById(entry.getKey());
+            if (entity == null) continue;
+
+            float dist = client.player.distanceTo(entity);
+            if (dist > MAX_RANGE) continue;
+
+            Vec3d ePos = entity.getPos();
+            double worldDx = ePos.x - playerPos.x;
+            double worldDz = ePos.z - playerPos.z;
+
+            // Rotate into player-forward-up frame.
+            // yawRad is clockwise from +Z (south), so forward = (sin(yaw), cos(yaw)) in world X/Z.
+            // We want: screen-up = player forward, screen-right = player right.
+            // mapX = dot(worldDelta, playerRight)   = -worldDx*cos(yaw) - worldDz*sin(yaw)
+            // mapY = -dot(worldDelta, playerForward) = -(worldDx*sin(yaw) + worldDz*cos(yaw)) negated for screen-up
+            float sinYaw = (float) Math.sin(yawRad);
+            float cosYaw = (float) Math.cos(yawRad);
+            float mapX = (float) (-worldDx * cosYaw + worldDz * sinYaw);
+            float mapY = (float) -(worldDx * sinYaw + worldDz * cosYaw);
+
+            // Scale: MAX_RANGE world units → RADIUS screen pixels, clamp inside disc
+            float scale = RADIUS / MAX_RANGE;
+            float dotX = cx + mapX * scale;
+            float dotY = cy + mapY * scale;
+
+            // Clamp dot to disc boundary
+            float offX = dotX - cx, offY = dotY - cy;
+            float offLen = (float) Math.sqrt(offX * offX + offY * offY);
+            float maxOff = RADIUS - 4.0f;
+            if (offLen > maxOff) {
+                dotX = cx + offX / offLen * maxOff;
+                dotY = cy + offY / offLen * maxOff;
+            }
+
+            // Larger dot for closer enemies
+            float closeness = 1.0f - dist / MAX_RANGE;
+            float dotR = 2.5f + closeness * 2.0f;
+            drawDot(matrix, dotX, dotY, dotR, 255, 40, 40, 230);
+        }
+
         RenderSystem.disableBlend();
+    }
+
+    private static void drawDot(Matrix4f matrix, float x, float y, float r, int red, int green, int blue, int alpha) {
+        int segments = 12;
+        var buf = Tessellator.getInstance().begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR);
+        buf.vertex(matrix, x, y, 0).color(red, green, blue, alpha);
+        for (int i = 0; i <= segments; i++) {
+            float a = (float) (2 * Math.PI * i / segments);
+            buf.vertex(matrix, x + (float) Math.cos(a) * r, y + (float) Math.sin(a) * r, 0)
+               .color(red, green, blue, alpha);
+        }
+        BufferRenderer.drawWithGlobalProgram(buf.end());
     }
 }
