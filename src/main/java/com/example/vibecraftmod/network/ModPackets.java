@@ -57,7 +57,6 @@ public class ModPackets {
 
         ClientPlayNetworking.registerGlobalReceiver(VibeCraftEventPayload.ID, (payload, context) ->
                 context.client().execute(() -> {
-                    System.out.println("[VibeCraftMod] Received plugin channel message: " + payload.json());
                     if (payload.protocolVersion() != VibeCraftEventPayload.PROTOCOL_VERSION) {
                         System.err.println("[VibeCraftMod] Protocol version mismatch: server=" + payload.protocolVersion() + ", client=" + VibeCraftEventPayload.PROTOCOL_VERSION);
                     }
