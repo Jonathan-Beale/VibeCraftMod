@@ -57,6 +57,7 @@ public class ModPackets {
 
         ClientPlayNetworking.registerGlobalReceiver(VibeCraftEventPayload.ID, (payload, context) ->
                 context.client().execute(() -> {
+                    System.out.println("[VibeCraftMod] Received plugin channel message: " + payload.json());
                     if (payload.protocolVersion() != VibeCraftEventPayload.PROTOCOL_VERSION) {
                         System.err.println("[VibeCraftMod] Protocol version mismatch: server=" + payload.protocolVersion() + ", client=" + VibeCraftEventPayload.PROTOCOL_VERSION);
                     }
@@ -264,7 +265,9 @@ public class ModPackets {
                 String ns = obj.has("namespace") ? obj.get("namespace").getAsString() : "";
                 System.err.println("[VibeCraftMod] Unknown event type: " + type + (ns.isBlank() ? "" : " namespace=" + ns));
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            System.err.println("[VibeCraftMod] handleEvent exception: " + e);
+        }
     }
 
     private static void handleHistory(JsonArray entries, String plugin) {

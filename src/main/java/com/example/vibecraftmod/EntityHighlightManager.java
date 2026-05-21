@@ -94,6 +94,8 @@ public final class EntityHighlightManager {
     private static void addToTeam(Entity entity, Scoreboard sb, String color) {
         Team team = ensureTeam(sb, color);
         String uuidStr = entity.getUuid().toString();
+        // Remove from any existing team first — addScoreHolderToTeam throws if already in one.
+        sb.clearTeam(uuidStr);
         teamEntries.computeIfAbsent(color, k -> new HashSet<>()).add(uuidStr);
         sb.addScoreHolderToTeam(uuidStr, team);
     }
