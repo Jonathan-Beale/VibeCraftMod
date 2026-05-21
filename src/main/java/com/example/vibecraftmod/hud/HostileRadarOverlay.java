@@ -77,8 +77,8 @@ public class HostileRadarOverlay {
             float closeness = 1.0f - dist / MAX_RANGE;
             float size = MIN_SIZE + closeness * (MAX_SIZE - MIN_SIZE);
 
-            // Rotate so tip points inward (toward enemy / toward center)
-            float rotation = (float) Math.atan2(-sdx, sdy);
+            // Rotate so tip points outward (away from center, toward the off-screen enemy)
+            float rotation = (float) Math.atan2(sdx, -sdy);
 
             drawArrow(context, arrowX, arrowY, size, rotation);
         }
