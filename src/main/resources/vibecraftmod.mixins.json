@@ -4,7 +4,8 @@
   "package": "com.example.vibecraftmod.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "EntityGlowMixin"
+    "EntityGlowMixin",
+    "WorldRendererOutlineMixin"
   ],
   "injectors": {
     "defaultRequire": 1

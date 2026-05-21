@@ -60,6 +60,11 @@ public final class EntityHighlightManager {
         return highlighted.containsKey(entityId);
     }
 
+    /** Used by WorldRendererOutlineMixin to activate the outline pass. */
+    public static boolean hasHighlights() {
+        return !highlighted.isEmpty();
+    }
+
     // ---- Team management ----
 
     private static void rebuildTeams() {
