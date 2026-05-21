@@ -56,6 +56,11 @@ public final class EntityHighlightManager {
         return highlighted.containsKey(entityId);
     }
 
+    /** Read-only view of the current highlighted map for HUD overlays. */
+    public static Map<Integer, String> getHighlighted() {
+        return highlighted;
+    }
+
     // ---- Team management ----
 
     private static void rebuildTeams() {

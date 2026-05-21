@@ -1,6 +1,7 @@
 package com.example.vibecraftmod;
 
 import com.example.vibecraftmod.hud.ArmorHudOverlay;
+import com.example.vibecraftmod.hud.HostileRadarOverlay;
 import com.example.vibecraftmod.hud.HudOverlay;
 import com.example.vibecraftmod.network.ModPackets;
 import com.example.vibecraftmod.settings.ModSettings;
@@ -19,6 +20,7 @@ public class VibeCraftMod implements ClientModInitializer {
         ModKeybindings.register();
         HudOverlay.register();
         ArmorHudOverlay.register();
+        HostileRadarOverlay.register();
     }
 }
 
