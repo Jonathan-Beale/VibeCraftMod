@@ -19,6 +19,7 @@ import org.joml.Matrix4f;
  * Aerial radar disc in the bottom-right corner.
  * Rotates with the player (forward = up). Only visible when hostile entities are nearby.
  */
+// TODO: replace hardcoded layout with schema-driven overlay — violates YAML-first / schema-driven design principle
 public class HostileRadarOverlay {
 
     private static final float MAX_RANGE    = 32.0f;

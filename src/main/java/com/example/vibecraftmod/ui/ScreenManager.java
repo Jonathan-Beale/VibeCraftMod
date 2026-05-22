@@ -8,12 +8,14 @@ import java.util.*;
  * widgets, and action handlers.
  */
 public final class ScreenManager {
+        // TODO: delete stub — never implemented
         // Closes the current modal (for UI actions)
         public static void closeModal() {
             // In this mod, closing a modal is equivalent to setting the screen to null
             net.minecraft.client.MinecraftClient.getInstance().setScreen(null);
         }
 
+        // TODO: delete stub — never implemented
         // Opens a modal by ID (for UI actions)
         public static void openModal(String modalId) {
             // This is a stub. Implement modal logic as needed.

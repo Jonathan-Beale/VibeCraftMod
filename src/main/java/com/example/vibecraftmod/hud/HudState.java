@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 public class HudState {
+    // TODO: delete stub — never implemented
     // Toggle the display of thoughts (for UI actions)
     public static synchronized void toggleThoughts() {
         // This is a stub. Implement toggling logic as needed.

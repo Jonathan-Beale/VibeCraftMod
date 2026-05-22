@@ -16,6 +16,7 @@ public final class OverlayDataBinding {
         void onDataChanged(String binding, Object value);
     }
 
+    // TODO: delete stub — never implemented
     public static void subscribe(String binding, DataListener listener) {
         listeners.computeIfAbsent(binding, k -> new CopyOnWriteArrayList<>()).add(listener);
         // Immediately notify with current value if available

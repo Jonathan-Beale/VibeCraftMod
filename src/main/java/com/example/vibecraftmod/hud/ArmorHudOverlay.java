@@ -9,6 +9,7 @@ import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.Identifier;
 
+// TODO: replace hardcoded layout with schema-driven overlay — violates YAML-first / schema-driven design principle
 public class ArmorHudOverlay {
 
     // The vanilla hotbar sprite is 182×22 px: 1px border top/bottom/left, then

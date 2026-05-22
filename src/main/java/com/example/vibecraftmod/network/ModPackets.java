@@ -21,11 +21,13 @@ import java.util.List;
 import java.util.Map;
 
 public class ModPackets {
+    // TODO: delete stub — never implemented
     // Sends a chat message as if typed by the user (for UI actions)
     public static void sendChat(String text) {
         sendInput(text);
     }
 
+    // TODO: delete stub — never implemented
     // Sends a command as if typed by the user (for UI actions)
     public static void sendCommand(String command) {
         sendInput(command);

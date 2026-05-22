@@ -263,8 +263,15 @@ public class SchemaScreen extends Screen {
                         int panelX, int panelW, int panelPadding, int titleHeight, int colLabel,
                         int y, int h, int mouseX, int mouseY) {
         WidgetRenderer renderer = widgetRenderers.get(type);
-        if (renderer == null) return;
-        renderer.render(ctx, widget, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY);
+        if (renderer != null) {
+            renderer.render(ctx, widget, panelX, panelW, panelPadding, titleHeight, colLabel, y, h, mouseX, mouseY);
+            return;
+        }
+        com.example.vibecraftmod.ui.WidgetRenderer ext = com.example.vibecraftmod.ui.WidgetRenderer.get(type);
+        if (ext != null) {
+            ext.render(ctx, widget, panelX + panelPadding, y,
+                    panelW - 2 * panelPadding, h, mouseX, mouseY, clickTargets);
+        }
         }
 
     @Override

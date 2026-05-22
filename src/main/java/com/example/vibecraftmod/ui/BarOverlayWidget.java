@@ -40,6 +40,7 @@ public class BarOverlayWidget implements OverlayWidget {
         return 0.0;
     }
 
+    // TODO: parseColor strips alpha channel — fix to preserve alpha when parsing RGBA color strings
     private int parseColor(String key, int fallback) {
         if (config == null || !config.has(key)) return fallback;
         try {

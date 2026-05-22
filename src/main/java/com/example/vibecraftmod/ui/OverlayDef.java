@@ -47,6 +47,7 @@ public final class OverlayDef {
         public static Position fromJson(JsonObject obj) {
             int x = obj.has("x") ? obj.get("x").getAsInt() : 0;
             int y = obj.has("y") ? obj.get("y").getAsInt() : 0;
+            // TODO: anchor field is parsed but never applied to widget positioning — implement or remove
             String anchor = obj.has("anchor") ? obj.get("anchor").getAsString() : "left";
             return new Position(x, y, anchor);
         }
